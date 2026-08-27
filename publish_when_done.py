@@ -51,26 +51,55 @@ def counts() -> dict:
             "ok": rows.get("ok", 0), "raw": rows}
 
 
+def run(cmd, timeout=120):
+    """한글 경로/출력 때문에 cp949 로 깨지지 않도록 항상 utf-8 로 읽는다."""
+    return subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=timeout)
+
+
 def crawler_running() -> bool:
-    """crawl_data_go_kr.py 프로세스가 살아 있는지 확인(확인 불가하면 True로 본다)."""
+    """crawl_data_go_kr.py 프로세스가 살아 있는지 확인.
+
+    확인에 실패하면 '살아 있다'로 본다 - 잘못 죽었다고 판단해 미완성 상태로
+    커밋해 버리는 쪽이 더 나쁘기 때문이다.
+    """
     try:
-        out = subprocess.run(
-            ["powershell", "-NoProfile", "-Command",
-             "Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" "
-             "| Select-Object -ExpandProperty CommandLine"],
-            capture_output=True, text=True, timeout=60).stdout
+        r = run(["powershell", "-NoProfile", "-Command",
+                 "Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" "
+                 "| Select-Object -ExpandProperty CommandLine"], timeout=60)
+        if r.returncode != 0 or r.stdout is None:
+            return True
+        return "crawl_data_go_kr.py" in r.stdout
     except Exception:
         return True
-    return "crawl_data_go_kr.py" in (out or "")
 
 
-def wait_until_done(interval: int, stall_minutes: int) -> dict:
-    last_done, stall_since = None, time.time()
+def resume_crawler(workers: int) -> bool:
+    """수집기가 죽어 있으면 다시 띄운다(중단 지점부터 이어받는다)."""
+    log_path = os.path.join(ROOT, "crawl_previews.log")
+    try:
+        flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write("\n=== %s 재개 ===\n" % time.strftime("%Y-%m-%d %H:%M:%S"))
+            fh.flush()
+            subprocess.Popen([sys.executable, "crawl_data_go_kr.py", "--previews", "--workers", str(workers)],
+                             cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT,
+                             env=dict(os.environ, PYTHONIOENCODING="utf-8"), creationflags=flags)
+        log("수집기를 다시 실행했습니다 (로그: crawl_previews.log)")
+        return True
+    except Exception as e:
+        log("수집기 재실행 실패: %r" % e)
+        return False
+
+
+def wait_until_done(interval: int, stall_minutes: int, resume: bool, workers: int, max_resume: int) -> dict:
+    last_done, stall_since, resumes = None, time.time(), 0
     while True:
         try:
             c = counts()
-        except Exception as e:  # DB 잠금 등 - 다음 주기에 다시 시도
+        except Exception as e:  # DB 잠금 등 - 정체로 오해하지 않도록 시계도 미룬다
             log("진행 상황 확인 실패(%s) - %d초 후 재시도" % (e.__class__.__name__, interval))
+            stall_since = time.time()
             time.sleep(interval)
             continue
 
@@ -87,17 +116,31 @@ def wait_until_done(interval: int, stall_minutes: int) -> dict:
         if c["pending"] == 0:
             log("미리보기 대기 0건 - 수집 완료")
             return c
+
+        alive = crawler_running()
         idle_min = (time.time() - stall_since) / 60
-        if idle_min >= stall_minutes and not crawler_running():
-            log("수집기가 종료되었고 %.0f분간 진행이 없어 완료로 간주합니다." % idle_min)
+
+        # 수집기가 죽었는데 남은 게 있으면 먼저 되살려 본다.
+        if not alive and resume and resumes < max_resume:
+            log("수집기가 보이지 않습니다 (대기 %d건 남음) - 재개를 시도합니다 [%d/%d]"
+                % (c["pending"], resumes + 1, max_resume))
+            if resume_crawler(workers):
+                resumes += 1
+                stall_since = time.time()
+                time.sleep(interval)
+                continue
+
+        if idle_min >= stall_minutes and not alive:
+            log("수집기가 종료되었고 %.0f분간 진행이 없어 여기까지를 결과로 올립니다. (대기 %d건 남음)"
+                % (idle_min, c["pending"]))
             return c
         time.sleep(interval)
 
 
 def git(*args, check=True):
-    r = subprocess.run(["git"] + list(args), cwd=ROOT, capture_output=True, text=True)
+    r = run(["git"] + list(args))
     if check and r.returncode != 0:
-        raise RuntimeError("git %s 실패: %s" % (" ".join(args), (r.stderr or r.stdout).strip()[:400]))
+        raise RuntimeError("git %s 실패: %s" % (" ".join(args), ((r.stderr or r.stdout) or "").strip()[:400]))
     return r
 
 
@@ -112,27 +155,29 @@ def publish(c: dict, push: bool) -> None:
         log("변경된 데이터가 없어 커밋을 건너뜁니다.")
         return
 
+    state = "수집 완료" if c["pending"] == 0 else "중단 시점 (%s건 남음)" % format(c["pending"], ",")
     message = (
-        "데이터 스냅샷 갱신 - 공공데이터 미리보기 %s/%s건 수집\n\n"
-        "- 미리보기 수집 완료 %s건 (ok %s / 없음 %s / 대상아님 %s / 오류 %s)\n"
+        "데이터 스냅샷 갱신 - 공공데이터 미리보기 %s/%s건 · %s\n\n"
+        "- 미리보기 처리 %s건 (ok %s / 없음 %s / 대상아님 %s / 오류 %s / 대기 %s)\n"
         "- 카탈로그 %s건 (AI Hub + 공공데이터포털)\n"
         "- data/snapshot 재생성, catalog.db 는 용량 때문에 계속 제외\n\n"
         "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
-        % (c["done"], c["total"], c["done"], c["raw"].get("ok", 0), c["raw"].get("none", 0),
-           c["raw"].get("not_applicable", 0), c["raw"].get("error", 0), c["total"] + 975)
+        % (c["done"], c["total"], state, c["done"], c["raw"].get("ok", 0), c["raw"].get("none", 0),
+           c["raw"].get("not_applicable", 0), c["raw"].get("error", 0), c["pending"], c["total"] + 975)
     )
     git("commit", "-m", message)
-    log("커밋 완료: %s" % git("log", "-1", "--oneline").stdout.strip())
+    log("커밋 완료: %s" % ((git("log", "-1", "--oneline").stdout or "").strip()))
 
     if not push:
         log("--no-push 이므로 푸시하지 않습니다.")
         return
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")
-    r = subprocess.run(["git", "push", "origin", "HEAD"], cwd=ROOT, capture_output=True, text=True, env=env)
+    r = subprocess.run(["git", "push", "origin", "HEAD"], cwd=ROOT, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", env=env)
     if r.returncode == 0:
-        log("푸시 완료 → %s" % git("remote", "get-url", "origin").stdout.strip())
+        log("푸시 완료 → %s" % ((git("remote", "get-url", "origin").stdout or "").strip()))
     else:
-        log("푸시 실패: %s" % (r.stderr or r.stdout).strip()[:400])
+        log("푸시 실패: %s" % ((r.stderr or r.stdout) or "").strip()[:400])
         log("원격이 앞서 있으면 `git pull --rebase` 후 `git push` 를 실행하세요.")
 
 
@@ -142,12 +187,16 @@ def main() -> None:
     ap.add_argument("--stall-minutes", type=int, default=20, help="이만큼 진행이 없고 수집기도 없으면 완료로 간주")
     ap.add_argument("--now", action="store_true", help="기다리지 않고 즉시 실행")
     ap.add_argument("--no-push", action="store_true", help="커밋만 하고 푸시는 생략")
+    ap.add_argument("--no-resume", action="store_true", help="수집기가 죽어도 다시 실행하지 않음")
+    ap.add_argument("--workers", type=int, default=20, help="수집기를 재개할 때 쓸 동시 실행 수")
+    ap.add_argument("--max-resume", type=int, default=8, help="수집기 자동 재개 최대 횟수")
     args = ap.parse_args()
 
     if not os.path.exists(DB_PATH):
         log("catalog.db 가 없습니다.")
         sys.exit(1)
-    c = counts() if args.now else wait_until_done(args.interval, args.stall_minutes)
+    c = counts() if args.now else wait_until_done(
+        args.interval, args.stall_minutes, not args.no_resume, args.workers, args.max_resume)
     publish(c, push=not args.no_push)
 
 
