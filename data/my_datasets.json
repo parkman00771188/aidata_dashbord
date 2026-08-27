@@ -1,5 +1,5 @@
 {
- "updated_at": "2026-08-27 16:17:48",
+ "updated_at": "2026-08-27 17:32:42",
  "items": {
   "aihub:208": {
    "sn": "208",
@@ -128,6 +128,22 @@
    "uid": "aihub:71966",
    "source": "AI Hub",
    "source_id": "71966"
+  },
+  "aihub:71965": {
+   "sn": "71965",
+   "title": "한국적 일상 3D 에셋 데이터",
+   "field": "영상이미지·멀티모달",
+   "size_bytes": 175264828926,
+   "avail": "다운로드",
+   "url": "https://aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&aihubDataSe=data&dataSetSn=71965",
+   "have": true,
+   "memo": "",
+   "path": "",
+   "added_at": "2026-08-27",
+   "have_at": "2026-08-27",
+   "uid": "aihub:71965",
+   "source": "AI Hub",
+   "source_id": "71965"
   }
  }
 }
