@@ -1,0 +1,7 @@
+# 크롤링 원본 HTML 캐시 (약 240MB, 재수집 가능)
+raw/
+__pycache__/
+*.log
+*.tmp
+.DS_Store
+Thumbs.db

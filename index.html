@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI-Hub 데이터셋</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f6f7f9; --card: #ffffff; --card-2: #f1f3f6; --line: #e5e8ec; --line-2: #d3d8de;
+    --ink: #111418; --ink-2: #5b6470; --ink-3: #8b94a1;
+    --accent: #2a78d6; --accent-ink: #1c5cab; --accent-bg: #eaf2fc; --accent-line: #b7d3f6;
+    --good: #14833b; --good-bg: #e6f5ea; --good-line: #b6e0c3;
+    --lock: #8a5a00; --lock-bg: #fff4dc; --lock-line: #f1d79a;
+    --warn: #a35d00; --warn-bg: #fff1e0;
+    --star: #e0a400;
+    --shadow: 0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+    --shadow-lg: 0 24px 60px rgba(16,24,40,.22);
+    --r: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0f1114; --card: #16191d; --card-2: #1d2126; --line: #262b32; --line-2: #343b44;
+      --ink: #f2f4f7; --ink-2: #aab3bf; --ink-3: #6f7a87;
+      --accent: #3987e5; --accent-ink: #86b6ef; --accent-bg: #16294a; --accent-line: #244a80;
+      --good: #4cc36f; --good-bg: #133421; --good-line: #1f5a35;
+      --lock: #f0c060; --lock-bg: #33260a; --lock-line: #5a4412;
+      --warn: #f3a552; --warn-bg: #3a2610;
+      --star: #f3c239;
+      --shadow: 0 1px 2px rgba(0,0,0,.4);
+      --shadow-lg: 0 24px 60px rgba(0,0,0,.6);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 14px/1.5 "Pretendard Variable", Pretendard, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent-ink); text-decoration: none; } a:hover { text-decoration: underline; }
+  button, select, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  .num { font-variant-numeric: tabular-nums; }
+  .muted { color: var(--ink-2); } .dim { color: var(--ink-3); }
+
+  /* ---- app bar */
+  .appbar { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--card) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .appbar .in { max-width: 1440px; margin: 0 auto; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 20px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; letter-spacing: -.01em; }
+  .brand .logo { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, var(--accent), #6fb0ff); display: grid; place-items: center; color: #fff; font-size: 13px; font-weight: 800; }
+  .tabs { display: flex; gap: 4px; margin-left: 8px; }
+  .tabs button { border: 0; background: transparent; padding: 8px 14px; border-radius: 8px; color: var(--ink-2); font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .tabs button:hover { background: var(--card-2); color: var(--ink); }
+  .tabs button.on { background: var(--accent-bg); color: var(--accent-ink); font-weight: 600; }
+  .tabs .cnt { background: var(--card-2); color: var(--ink-2); border-radius: 999px; padding: 0 7px; font-size: 11px; font-weight: 600; }
+  .tabs button.on .cnt { background: var(--accent-line); color: var(--accent-ink); }
+  .appbar .right { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); }
+  .savestate { display: inline-flex; align-items: center; gap: 6px; }
+  .savestate i { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); display: inline-block; }
+  .savestate.ok i { background: var(--good); } .savestate.err i { background: #d03b3b; } .savestate.busy i { background: var(--star); }
+
+  .btn { border: 1px solid var(--line-2); background: var(--card); border-radius: 8px; padding: 6px 12px; font-size: 13px; color: var(--ink); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .btn:hover { border-color: var(--accent); color: var(--accent-ink); text-decoration: none; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; } .btn.primary:hover { filter: brightness(1.05); color: #fff; }
+  .btn.sm { padding: 3px 9px; font-size: 12px; border-radius: 7px; }
+  .btn.ghost { border-color: transparent; background: transparent; }
+  .btn.danger:hover { border-color: #d03b3b; color: #d03b3b; }
+
+  .page { max-width: 1440px; margin: 0 auto; padding: 20px 24px 80px; }
+  .view { display: none; } .view.on { display: block; }
+
+  /* ---- KPI strip */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; box-shadow: var(--shadow); cursor: pointer; transition: border-color .12s; }
+  .kpi:hover { border-color: var(--accent-line); }
+  .kpi.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+  .kpi .l { font-size: 12px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+  .kpi .v { font-size: 24px; font-weight: 700; letter-spacing: -.02em; margin-top: 4px; line-height: 1.2; }
+  .kpi .s { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+  .kpi.static { cursor: default; }
+
+  /* ---- toolbar */
+  .toolbar { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; box-shadow: var(--shadow); margin-bottom: 12px; }
+  .toolbar .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .toolbar .row + .row { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+  .search { flex: 1 1 280px; position: relative; }
+  .search input { width: 100%; padding: 8px 12px 8px 34px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); outline: none; }
+  .search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+  .search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--ink-3); }
+  .toolbar select { padding: 7px 28px 7px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%238b94a1' stroke-width='1.5'/></svg>"); background-repeat: no-repeat; background-position: right 10px center; }
+  .chiplbl { font-size: 12px; color: var(--ink-3); margin-right: 2px; }
+  .chip { border: 1px solid var(--line); background: var(--card-2); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; user-select: none; color: var(--ink-2); display: inline-flex; gap: 5px; align-items: center; }
+  .chip b { font-weight: 600; color: var(--ink-3); font-size: 11px; }
+  .chip:hover { border-color: var(--accent-line); color: var(--ink); }
+  .chip.on { background: var(--accent-bg); border-color: var(--accent-line); color: var(--accent-ink); } .chip.on b { color: var(--accent-ink); }
+
+  .meta-row { display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--ink-2); margin: 0 4px 10px; flex-wrap: wrap; }
+  .meta-row b { color: var(--ink); font-weight: 600; }
+  .meta-row .sp { flex: 1; }
+
+  /* ---- table */
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+  .tw { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 1060px; }
+  th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+  th { font-size: 12px; color: var(--ink-2); font-weight: 600; white-space: nowrap; background: var(--card-2); cursor: pointer; user-select: none; }
+  th.ns { cursor: default; }
+  th .arr { color: var(--accent-ink); margin-left: 3px; }
+  tbody tr { transition: background .1s; }
+  tbody tr:hover { background: var(--card-2); }
+  tbody tr.clk, td.clk { cursor: pointer; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.title { max-width: 440px; }
+  td.title .t { font-weight: 600; color: var(--ink); line-height: 1.35; }
+  td.title .tg { font-size: 11px; color: var(--ink-3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
+  td.r { text-align: right; white-space: nowrap; }
+  td.nw { white-space: nowrap; }
+  .tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; font-size: 12px; white-space: nowrap; border: 1px solid transparent; }
+  .tag.dl { background: var(--accent-bg); color: var(--accent-ink); border-color: var(--accent-line); }
+  .tag.lock { background: var(--lock-bg); color: var(--lock); border-color: var(--lock-line); }
+  .tag.prep { background: var(--warn-bg); color: var(--warn); }
+  .tag.none { background: var(--card-2); color: var(--ink-2); }
+  .tag.sub { background: transparent; color: var(--ink-3); border-color: var(--line-2); font-size: 11px; padding: 0 6px; }
+  .have { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid var(--line-2); background: var(--card); color: var(--ink-3); cursor: pointer; white-space: nowrap; }
+  .have:hover { border-color: var(--good-line); color: var(--good); }
+  .have.on { background: var(--good-bg); color: var(--good); border-color: var(--good-line); }
+  .have i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: .35; }
+  .have.on i { opacity: 1; }
+  .star { border: 0; background: transparent; font-size: 18px; line-height: 1; color: var(--line-2); padding: 2px 4px; border-radius: 6px; }
+  .star:hover { color: var(--star); background: var(--card-2); }
+  .star.on { color: var(--star); }
+  .typ { display: inline-block; background: var(--card-2); border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; font-size: 11px; margin-right: 3px; color: var(--ink-2); }
+  .newb { display: inline-block; font-size: 10px; font-weight: 700; color: var(--accent-ink); background: var(--accent-bg); border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; }
+  .empty { padding: 48px 20px; text-align: center; color: var(--ink-2); }
+  .empty h3 { margin: 0 0 6px; font-size: 16px; color: var(--ink); }
+
+  /* ---- pagination */
+  .pager { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--card); flex-wrap: wrap; font-size: 13px; }
+  .pager .info { color: var(--ink-2); margin-right: auto; }
+  .pager button { border: 1px solid var(--line-2); background: var(--card); min-width: 32px; height: 32px; border-radius: 8px; padding: 0 8px; }
+  .pager button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-ink); }
+  .pager button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pager button:disabled { opacity: .4; cursor: default; }
+  .pager select { padding: 6px 8px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); }
+
+  /* ---- my datasets */
+  .my-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .my-sum .kpi.good { border-color: var(--good-line); background: linear-gradient(180deg, var(--good-bg), var(--card) 80%); }
+  .my-sum .kpi.acc { border-color: var(--accent-line); background: linear-gradient(180deg, var(--accent-bg), var(--card) 80%); }
+  .prog { height: 6px; background: var(--card-2); border-radius: 999px; overflow: hidden; margin-top: 8px; }
+  .prog i { display: block; height: 100%; background: var(--good); border-radius: 999px; }
+  input.memo { width: 100%; min-width: 160px; border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 4px 6px; color: var(--ink); }
+  input.memo:hover { border-color: var(--line-2); } input.memo:focus { border-color: var(--accent); outline: none; background: var(--card); }
+  input.memo::placeholder { color: var(--ink-3); }
+
+  /* ---- drawer */
+  .ov { position: fixed; inset: 0; background: rgba(10,14,20,.45); opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 30; }
+  .ov.on { opacity: 1; pointer-events: auto; }
+  .dr { position: fixed; top: 0; right: 0; bottom: 0; width: min(960px, 96vw); background: var(--card); box-shadow: var(--shadow-lg); transform: translateX(100%); transition: transform .22s cubic-bezier(.2,.8,.2,1); z-index: 31; display: flex; flex-direction: column; }
+  .dr.on { transform: none; }
+  .dr .hd { padding: 20px 24px 12px; border-bottom: 1px solid var(--line); }
+  .dr .hd h2 { margin: 0 0 8px; font-size: 20px; letter-spacing: -.01em; line-height: 1.3; padding-right: 40px; }
+  .dr .facts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--ink-2); align-items: center; }
+  .dr .facts b { color: var(--ink); font-weight: 600; }
+  .dr .acts { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+  .dr .x { position: absolute; top: 14px; right: 16px; border: 0; background: var(--card-2); width: 32px; height: 32px; border-radius: 8px; font-size: 18px; color: var(--ink-2); }
+  .dr .x:hover { color: var(--ink); }
+  .dtabs { display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .dtabs button { border: 0; background: transparent; padding: 10px 12px; color: var(--ink-2); border-bottom: 2px solid transparent; white-space: nowrap; font-size: 13px; margin-bottom: -1px; }
+  .dtabs button.on { color: var(--accent-ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .dtabs button:disabled { opacity: .35; cursor: default; }
+  .db { flex: 1; overflow: auto; padding: 18px 24px 48px; }
+  .db h4, .db h5 { margin: 20px 0 8px; font-size: 14px; } .db h5 { font-size: 13px; color: var(--ink-2); }
+  .db h4:first-child, .db h5:first-child { margin-top: 0; }
+  .db pre { white-space: pre-wrap; word-break: break-word; background: var(--card-2); padding: 12px 14px; border-radius: 10px; font: 13px/1.6 inherit; margin: 6px 0; }
+  .db table { min-width: 0; width: 100%; margin: 6px 0 14px; font-size: 13px; }
+  .db caption { text-align: left; font-weight: 600; color: var(--ink-2); font-size: 12px; padding: 4px 0; }
+  .db th, .db td { padding: 7px 10px; border: 1px solid var(--line); }
+  .db th { position: static; background: var(--card-2); cursor: default; }
+  .db p { margin: 6px 0; }
+  .kv { display: grid; grid-template-columns: 150px 1fr; gap: 6px 14px; font-size: 13px; margin: 6px 0 14px; }
+  .kv dt { color: var(--ink-2); } .kv dd { margin: 0; }
+  .loading { color: var(--ink-3); padding: 20px; text-align: center; }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 13px; opacity: 0; transition: .2s; z-index: 50; pointer-events: none; }
+  .toast.on { opacity: 1; transform: translateX(-50%); }
+  .banner { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--lock-line); border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; display: none; }
+</style>
+</head>
+<body>
+<div class="appbar"><div class="in">
+  <div class="brand"><span class="logo">AI</span>AI-Hub 데이터셋</div>
+  <nav class="tabs">
+    <button data-view="all" class="on">전체 데이터셋 <span class="cnt" id="cntAll">–</span></button>
+    <button data-view="my">내 데이터셋 <span class="cnt" id="cntMy">0</span></button>
+  </nav>
+  <div class="right">
+    <span id="crawlInfo"></span>
+    <span class="savestate" id="saveState" title="내 데이터셋 저장 상태"><i></i><span>–</span></span>
+  </div>
+</div></div>
+
+<div class="page">
+  <div class="banner" id="banner"></div>
+
+  <!-- ============ 전체 ============ -->
+  <section class="view on" id="view-all">
+    <div class="kpis" id="kpis"></div>
+    <div class="toolbar">
+      <div class="row">
+        <label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" id="q" placeholder="제목, 소개, 태그, 구축업체, 라벨링 유형 검색"></label>
+        <select id="fAvail"><option value="">제공 방식: 전체</option><option value="다운로드">↓ 다운로드 가능</option><option value="안심존">🔒 안심존 신청</option><option value="준비중">준비중</option></select>
+        <select id="fYear"><option value="">구축년도: 전체</option></select>
+        <select id="fGen"><option value="">생성방식: 전체</option></select>
+        <select id="fMine"><option value="">내 데이터셋: 전체</option><option value="picked">담은 것만</option><option value="have">데이터 있음만</option><option value="none">담지 않은 것만</option></select>
+        <button class="btn" id="btnReset">초기화</button>
+      </div>
+      <div class="row" id="fieldChips"></div>
+      <div class="row" id="typeChips"></div>
+    </div>
+    <div class="meta-row" id="metaRow"></div>
+    <div class="card">
+      <div class="tw"><table>
+        <thead><tr>
+          <th class="ns" style="width:36px" title="내 데이터셋에 담기">★</th>
+          <th data-k="title">데이터셋</th>
+          <th data-k="field">분야</th>
+          <th data-k="types">유형</th>
+          <th data-k="avail">제공 방식</th>
+          <th data-k="build_year">구축</th>
+          <th data-k="size_bytes" class="r">용량</th>
+          <th data-k="downloads" class="r">다운로드</th>
+          <th data-k="have">내 보유</th>
+          <th class="ns">링크</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table></div>
+      <div class="empty" id="emptyAll" style="display:none"><h3>조건에 맞는 데이터셋이 없습니다</h3>필터를 바꾸거나 초기화하세요.</div>
+      <div class="pager" id="pager"></div>
+    </div>
+  </section>
+
+  <!-- ============ 내 데이터셋 ============ -->
+  <section class="view" id="view-my">
+    <div class="my-sum" id="mySum"></div>
+    <div class="toolbar"><div class="row">
+      <label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" id="mq" placeholder="내 데이터셋 검색 (제목, 메모, 경로)"></label>
+      <select id="mf"><option value="">전체</option><option value="have">● 데이터 있음</option><option value="todo">○ 아직 안 받음</option></select>
+      <span style="flex:1"></span>
+      <button class="btn" id="btnMyJson">JSON 내보내기</button>
+      <button class="btn" id="btnMyCsv">CSV 내보내기</button>
+      <label class="btn" title="이전에 내보낸 my_datasets.json 불러오기(병합)">JSON 불러오기<input type="file" id="fileMy" accept=".json" hidden></label>
+    </div></div>
+    <div class="card">
+      <div class="tw"><table>
+        <thead><tr>
+          <th class="ns" style="width:36px"></th>
+          <th data-k="title">데이터셋</th>
+          <th data-k="field">분야</th>
+          <th data-k="avail">제공 방식</th>
+          <th data-k="size_bytes" class="r">용량</th>
+          <th data-k="have">내 보유</th>
+          <th class="ns" style="min-width:200px">메모</th>
+          <th class="ns" style="min-width:180px">로컬 경로</th>
+          <th data-k="added_at">담은 날</th>
+          <th class="ns"></th>
+        </tr></thead>
+        <tbody id="mbody"></tbody>
+      </table></div>
+      <div class="empty" id="emptyMy" style="display:none"><h3>아직 담은 데이터셋이 없습니다</h3>전체 데이터셋 탭에서 ★ 를 눌러 담으세요. 담은 뒤 다운로드를 마치면 "데이터 있음"으로 표시하세요.</div>
+    </div>
+  </section>
+</div>
+
+<div class="ov" id="ov"></div>
+<aside class="dr" id="dr" aria-hidden="true">
+  <button class="x" id="drX" aria-label="닫기">×</button>
+  <div class="hd" id="drHd"></div>
+  <div class="dtabs" id="drTabs"></div>
+  <div class="db" id="drBody"></div>
+</aside>
+<div class="toast" id="toast"></div>
+
+<script>
+(async function () {
+  const $ = (s, r = document) => r.querySelector(s);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fmtN = (n) => (n || 0).toLocaleString('ko-KR');
+  const fmtB = (b) => { if (!b) return '–'; const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']; let i = 0, v = b; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)) + ' ' + u[i]; };
+  const today = () => new Date().toISOString().slice(0, 10);
+  let toastT; const toast = (m) => { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 1800); };
+  const isFile = location.protocol === 'file:';
+
+  // ------------------------------------------------------------ 데이터 로드
+  let RAW;
+  try { const r = await fetch('data/datasets.json', { cache: 'no-store' }); if (!r.ok) throw 0; RAW = await r.json(); }
+  catch (e) {
+    $('#banner').style.display = 'block';
+    $('#banner').innerHTML = isFile
+      ? '<b>파일을 직접 열면 데이터를 읽을 수 없습니다.</b> <code>대시보드 실행.bat</code> 을 실행해 http://localhost:8765 로 열어주세요.'
+      : '<b>data/datasets.json 을 불러올 수 없습니다.</b> 먼저 <code>python crawl_aihub.py</code> 를 실행하세요.';
+    return;
+  }
+  const DATA = RAW.datasets;
+  const BY = new Map(DATA.map(d => [d.sn, d]));
+  // 사이트 제공 방식 (사이트 상태와 "내 보유"를 분리)
+  DATA.forEach(d => {
+    d.avail = d.status === '데이터 있음' ? '다운로드' : d.status === '안심존' ? '안심존' : d.status === '준비중' ? '준비중' : '불가';
+    d._s = [d.title, d.intro, d.purpose, (d.tags || []).join(' '), d.builder_main, (d.builder_sub || []).join(' '), d.label_type, d.label_format, d.data_format, d.use_service, d.field, (d.types || []).join(' '), d.sn, d.gen_method].join(' ').toLowerCase();
+  });
+  $('#crawlInfo').textContent = `${fmtN(RAW.meta.count)}개 · 수집 ${RAW.meta.crawled_at}`;
+  $('#cntAll').textContent = fmtN(DATA.length);
+
+  // ------------------------------------------------------------ 내 데이터셋 (data/my_datasets.json ↔ /api/my, 실패 시 localStorage)
+  const LS = 'aihub_my_v2';
+  let MY = { updated_at: null, items: {} };
+  let apiOK = false;
+  const setSave = (cls, txt) => { const el = $('#saveState'); el.className = 'savestate ' + cls; el.querySelector('span').textContent = txt; };
+  const mk = (sn, have = false) => { const d = BY.get(sn) || {}; return { sn, title: d.title || '', field: d.field || '', size_bytes: d.size_bytes || 0, avail: d.avail || '', url: d.url || '', have, memo: '', path: '', added_at: today(), have_at: have ? today() : null }; };
+  async function loadMy() {
+    try { const r = await fetch('/api/my', { cache: 'no-store' }); if (r.ok) { MY = await r.json(); apiOK = true; } } catch (e) {}
+    if (!apiOK) { try { MY = JSON.parse(localStorage.getItem(LS)) || MY; } catch (e) {} }
+    if (!MY.items) MY.items = {};
+    // 구버전(체크박스만) 이관
+    try { const old = JSON.parse(localStorage.getItem('aihub_done_v1') || '[]'); old.forEach(sn => { if (!MY.items[sn] && BY.has(sn)) MY.items[sn] = mk(sn, true); }); if (old.length) { localStorage.removeItem('aihub_done_v1'); saveMy(); } } catch (e) {}
+    setSave(apiOK ? 'ok' : 'err', apiOK ? 'data/my_datasets.json 에 저장' : '브라우저에만 저장 (서버 없음)');
+  }
+  let saveT;
+  function saveMy() {
+    try { localStorage.setItem(LS, JSON.stringify(MY)); } catch (e) {}
+    if (!apiOK) return;
+    setSave('busy', '저장 중…');
+    clearTimeout(saveT);
+    saveT = setTimeout(async () => {
+      try { const r = await fetch('/api/my', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(MY) }); if (!r.ok) throw 0; const j = await r.json(); MY.updated_at = j.updated_at; setSave('ok', `저장됨 ${j.updated_at.slice(11, 16)}`); }
+      catch (e) { setSave('err', '저장 실패 (서버 확인)'); }
+    }, 400);
+  }
+  const picked = (sn) => !!MY.items[sn];
+  const has = (sn) => !!(MY.items[sn] && MY.items[sn].have);
+  function togglePick(sn) { if (MY.items[sn]) { delete MY.items[sn]; toast('내 데이터셋에서 제거'); } else { MY.items[sn] = mk(sn); toast('내 데이터셋에 담았습니다'); } saveMy(); refreshAll(); }
+  function toggleHave(sn) { if (!MY.items[sn]) MY.items[sn] = mk(sn); const it = MY.items[sn]; it.have = !it.have; it.have_at = it.have ? today() : null; toast(it.have ? '● 데이터 있음으로 표시' : '○ 미다운로드로 표시'); saveMy(); refreshAll(); }
+  await loadMy();
+
+  // ------------------------------------------------------------ 공통 렌더 조각
+  const availTag = (d) => ({
+    '다운로드': `<span class="tag dl" title="AI-Hub에서 다운로드 신청 가능${d.s3_file_cnt ? ' · 파일 ' + d.s3_file_cnt + '개' : ''}">↓ 다운로드${d.approval_required ? ' <small>(승인)</small>' : ''}</span>`,
+    '안심존': '<span class="tag lock" title="안심존 이용신청 후 열람만 가능 (다운로드 불가)">🔒 안심존 신청</span>',
+    '준비중': '<span class="tag prep">준비중</span>',
+  }[d.avail] || '<span class="tag none">–</span>');
+  const haveBtn = (sn) => `<button class="have ${has(sn) ? 'on' : ''}" data-have="${sn}" title="다운로드를 마쳤으면 클릭"><i></i>${has(sn) ? '데이터 있음' : '미다운로드'}</button>`;
+  const starBtn = (sn) => `<button class="star ${picked(sn) ? 'on' : ''}" data-pick="${sn}" title="${picked(sn) ? '내 데이터셋에서 제거' : '내 데이터셋에 담기'}">${picked(sn) ? '★' : '☆'}</button>`;
+  const titleCell = (d, cls = '') => `<td class="title ${cls}"><div class="t">${esc(d.title)}${(d.labels || []).includes('NEW') ? '<span class="newb">NEW</span>' : ''}</div>${d.tags && d.tags.length ? `<div class="tg">${d.tags.map(t => '#' + esc(t)).join(' ')}</div>` : ''}</td>`;
+
+  // ------------------------------------------------------------ 전체 탭: 상태
+  const st = { q: '', avail: '', year: '', gen: '', mine: '', field: '', types: new Set(), k: 'list_order', dir: 1, page: 1, per: +(localStorage.getItem('aihub_per') || 50) };
+  const uniq = (a) => [...new Set(a.filter(Boolean))];
+  uniq(DATA.map(d => d.build_year)).sort().reverse().forEach(v => $('#fYear').insertAdjacentHTML('beforeend', `<option>${esc(v)}</option>`));
+  uniq(DATA.map(d => d.gen_method)).sort().forEach(v => $('#fGen').insertAdjacentHTML('beforeend', `<option>${esc(v)}</option>`));
+  const fieldCnt = {}, typeCnt = {};
+  DATA.forEach(d => { fieldCnt[d.field] = (fieldCnt[d.field] || 0) + 1; (d.types || []).forEach(t => typeCnt[t] = (typeCnt[t] || 0) + 1); });
+  const fields = Object.keys(fieldCnt).sort((a, b) => fieldCnt[b] - fieldCnt[a]);
+  const types = Object.keys(typeCnt).sort((a, b) => typeCnt[b] - typeCnt[a]);
+  function renderChips() {
+    $('#fieldChips').innerHTML = '<span class="chiplbl">분야</span>' + fields.map(f => `<span class="chip ${st.field === f ? 'on' : ''}" data-field="${esc(f)}">${esc(f)}<b>${fieldCnt[f]}</b></span>`).join('');
+    $('#typeChips').innerHTML = '<span class="chiplbl">유형</span>' + types.map(t => `<span class="chip ${st.types.has(t) ? 'on' : ''}" data-type="${esc(t)}">${esc(t)}<b>${typeCnt[t]}</b></span>`).join('');
+  }
+
+  function filtered() {
+    const q = st.q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return DATA.filter(d => {
+      if (st.field && d.field !== st.field) return false;
+      if (st.avail && d.avail !== st.avail) return false;
+      if (st.year && d.build_year !== st.year) return false;
+      if (st.gen && d.gen_method !== st.gen) return false;
+      if (st.mine === 'picked' && !picked(d.sn)) return false;
+      if (st.mine === 'have' && !has(d.sn)) return false;
+      if (st.mine === 'none' && picked(d.sn)) return false;
+      if (st.types.size && ![...st.types].every(t => (d.types || []).includes(t))) return false;
+      if (q.length && !q.every(w => d._s.includes(w))) return false;
+      return true;
+    });
+  }
+  function sortBy(rows, k, dir, getter) {
+    return rows.slice().sort((a, b) => { const x = getter(a, k), y = getter(b, k); if (typeof x === 'number' && typeof y === 'number') return (x - y) * dir; return String(x).localeCompare(String(y), 'ko') * dir; });
+  }
+  const AVAIL_ORDER = ['다운로드', '준비중', '안심존', '불가'];
+  const getAll = (d, k) => k === 'types' ? (d.types || []).join(',') : k === 'have' ? (has(d.sn) ? 2 : picked(d.sn) ? 1 : 0) : k === 'avail' ? AVAIL_ORDER.indexOf(d.avail) : (d[k] == null ? '' : d[k]);
+
+  function renderKpis(rows) {
+    const cnt = (f) => DATA.filter(f).length;
+    const haveList = Object.values(MY.items).filter(i => i.have);
+    const k = [
+      { key: 'all', l: '전체 데이터셋', v: fmtN(DATA.length), s: `표시 ${fmtN(rows.length)}개`, on: !st.avail && !st.mine },
+      { key: 'avail:다운로드', l: '<span class="tag dl" style="padding:0 6px">↓</span> 다운로드 가능', v: fmtN(cnt(d => d.avail === '다운로드')), s: fmtB(DATA.filter(d => d.avail === '다운로드').reduce((a, d) => a + d.size_bytes, 0)) + ' 전체', on: st.avail === '다운로드' },
+      { key: 'avail:안심존', l: '<span class="tag lock" style="padding:0 6px">🔒</span> 안심존 신청', v: fmtN(cnt(d => d.avail === '안심존')), s: '열람만 가능 · 다운로드 불가', on: st.avail === '안심존' },
+      { key: 'mine:picked', l: '★ 내 데이터셋에 담김', v: fmtN(Object.keys(MY.items).length), s: fmtB(Object.values(MY.items).reduce((a, i) => a + (i.size_bytes || 0), 0)) + ' 총 용량', on: st.mine === 'picked' },
+      { key: 'mine:have', l: '<span class="have on" style="padding:0 6px;font-size:10px"><i></i></span> 데이터 있음 (다운로드 완료)', v: fmtN(haveList.length), s: fmtB(haveList.reduce((a, i) => a + (i.size_bytes || 0), 0)) + ' 보유', on: st.mine === 'have' },
+    ];
+    $('#kpis').innerHTML = k.map(t => `<div class="kpi ${t.on ? 'on' : ''}" data-key="${t.key}"><div class="l">${t.l}</div><div class="v num">${t.v}</div><div class="s">${t.s}</div></div>`).join('');
+  }
+
+  let cur = [];
+  function renderAll() {
+    const rows = sortBy(filtered(), st.k, st.dir, getAll);
+    cur = rows;
+    renderKpis(rows);
+    const pages = Math.max(1, Math.ceil(rows.length / st.per));
+    if (st.page > pages) st.page = pages;
+    const slice = rows.slice((st.page - 1) * st.per, st.page * st.per);
+    const bytes = rows.reduce((a, d) => a + (d.size_bytes || 0), 0);
+    $('#metaRow').innerHTML = `<span><b>${fmtN(rows.length)}</b>개</span><span>다운로드 가능 <b>${fmtN(rows.filter(d => d.avail === '다운로드').length)}</b></span><span>안심존 <b>${fmtN(rows.filter(d => d.avail === '안심존').length)}</b></span><span>표시 항목 총 용량 <b>${fmtB(bytes)}</b></span><span class="sp"></span><button class="btn sm" id="btnCsvAll">현재 목록 CSV</button>`;
+    document.querySelectorAll('#view-all th[data-k]').forEach(th => { th.innerHTML = th.textContent.replace(/[▲▼]/g, '').trim() + (th.dataset.k === st.k ? `<span class="arr">${st.dir > 0 ? '▲' : '▼'}</span>` : ''); });
+    $('#emptyAll').style.display = rows.length ? 'none' : '';
+    $('#tbody').innerHTML = slice.map(d => `
+      <tr data-sn="${d.sn}" class="clk">
+        <td>${starBtn(d.sn)}</td>
+        ${titleCell(d)}
+        <td class="nw">${esc(d.field)}</td>
+        <td class="nw">${(d.types || []).map(t => `<span class="typ">${esc(t)}</span>`).join('')}</td>
+        <td class="nw">${availTag(d)}</td>
+        <td class="nw muted">${esc(d.build_year)}</td>
+        <td class="r num">${fmtB(d.size_bytes)}</td>
+        <td class="r num muted">${fmtN(d.downloads)}</td>
+        <td class="nw">${haveBtn(d.sn)}</td>
+        <td class="nw"><a href="${esc(d.url)}" target="_blank" rel="noopener">AI-Hub ↗</a></td>
+      </tr>`).join('');
+    // pager
+    const p = st.page, btn = (n, txt = n, on = false, dis = false) => `<button data-p="${n}" class="${on ? 'on' : ''}" ${dis ? 'disabled' : ''}>${txt}</button>`;
+    const nums = [...new Set([1, pages, p - 2, p - 1, p, p + 1, p + 2].filter(n => n >= 1 && n <= pages))].sort((a, b) => a - b);
+    let html = btn(p - 1, '‹', false, p === 1), prev = 0;
+    nums.forEach(n => { if (n - prev > 1) html += '<span class="dim" style="padding:0 4px">…</span>'; html += btn(n, n, n === p); prev = n; });
+    html += btn(p + 1, '›', false, p === pages);
+    $('#pager').innerHTML = `<span class="info">${fmtN(rows.length)}개 중 ${fmtN(rows.length ? (p - 1) * st.per + 1 : 0)}–${fmtN(Math.min(p * st.per, rows.length))}</span>${html}<select id="per">${[25, 50, 100, 200].map(n => `<option value="${n}" ${n === st.per ? 'selected' : ''}>${n}개씩</option>`).join('')}</select>`;
+  }
+
+  // ------------------------------------------------------------ 내 데이터셋 탭
+  const mst = { q: '', f: '', k: 'added_at', dir: -1 };
+  function myRows() {
+    const q = mst.q.trim().toLowerCase();
+    return Object.values(MY.items).map(i => ({ ...i, d: BY.get(i.sn) })).filter(i => {
+      if (mst.f === 'have' && !i.have) return false;
+      if (mst.f === 'todo' && i.have) return false;
+      if (q && ![i.title, i.memo, i.path, i.field, i.sn].join(' ').toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }
+  function renderMy() {
+    const all = Object.values(MY.items);
+    const tot = all.reduce((a, i) => a + (i.size_bytes || 0), 0);
+    const haveB = all.filter(i => i.have).reduce((a, i) => a + (i.size_bytes || 0), 0);
+    const haveN = all.filter(i => i.have).length;
+    const lockN = all.filter(i => i.avail === '안심존').length;
+    $('#cntMy').textContent = fmtN(all.length);
+    $('#mySum').innerHTML = `
+      <div class="kpi static acc"><div class="l">★ 담은 데이터셋</div><div class="v num">${fmtN(all.length)}<span class="dim" style="font-size:13px;font-weight:500"> 개</span></div><div class="s">전부 받으면 <b>${fmtB(tot)}</b>${lockN ? ` · 안심존 ${lockN}개 포함(다운로드 불가)` : ''}</div></div>
+      <div class="kpi static good"><div class="l"><span class="have on" style="padding:0 6px;font-size:10px"><i></i></span> 데이터 있음</div><div class="v num">${fmtN(haveN)}<span class="dim" style="font-size:13px;font-weight:500"> / ${fmtN(all.length)}</span></div><div class="s">보유 ${fmtB(haveB)}</div><div class="prog"><i style="width:${tot ? haveB / tot * 100 : 0}%"></i></div></div>
+      <div class="kpi static"><div class="l">○ 남은 다운로드</div><div class="v num">${fmtN(all.length - haveN)}<span class="dim" style="font-size:13px;font-weight:500"> 개</span></div><div class="s">남은 용량 <b>${fmtB(tot - haveB)}</b></div></div>
+      <div class="kpi static"><div class="l">저장 파일</div><div class="v" style="font-size:14px;font-weight:600;word-break:break-all">data/my_datasets.json</div><div class="s">${MY.updated_at ? '마지막 저장 ' + MY.updated_at : apiOK ? '아직 저장 안 됨' : '서버 미실행 · 브라우저 저장'}</div></div>`;
+    const rows = sortBy(myRows(), mst.k, mst.dir, (i, k) => k === 'have' ? (i.have ? 1 : 0) : k === 'avail' ? AVAIL_ORDER.indexOf(i.avail) : (i[k] == null ? '' : i[k]));
+    document.querySelectorAll('#view-my th[data-k]').forEach(th => { th.innerHTML = th.textContent.replace(/[▲▼]/g, '').trim() + (th.dataset.k === mst.k ? `<span class="arr">${mst.dir > 0 ? '▲' : '▼'}</span>` : ''); });
+    $('#emptyMy').style.display = all.length ? 'none' : '';
+    $('#mbody').innerHTML = rows.map(i => `
+      <tr data-sn="${i.sn}">
+        <td>${starBtn(i.sn)}</td>
+        ${i.d ? titleCell(i.d, 'clk') : `<td class="title"><div class="t">${esc(i.title)}</div><div class="tg dim">현재 목록에 없음 (sn ${esc(i.sn)})</div></td>`}
+        <td class="nw">${esc(i.field)}</td>
+        <td class="nw">${i.d ? availTag(i.d) : ''}</td>
+        <td class="r num">${fmtB(i.size_bytes)}</td>
+        <td class="nw">${haveBtn(i.sn)}</td>
+        <td><input class="memo" data-memo="${i.sn}" value="${esc(i.memo)}" placeholder="메모…"></td>
+        <td><input class="memo" data-path="${i.sn}" value="${esc(i.path)}" placeholder="D:\\data\\…"></td>
+        <td class="nw muted num">${esc(i.added_at || '')}</td>
+        <td class="nw"><a href="${esc(i.url)}" target="_blank" rel="noopener">AI-Hub ↗</a> &nbsp;<button class="btn sm ghost danger" data-rm="${i.sn}" title="내 데이터셋에서 제거">제거</button></td>
+      </tr>`).join('');
+  }
+  function refreshAll() { renderAll(); renderMy(); }
+
+  // ------------------------------------------------------------ 상세 드로어 (details/<sn>.json 지연 로드)
+  const SECS = [['overview', '개요'], ['meta', '메타데이터 구조표'], ['stats', '데이터 통계'], ['annotation', '어노테이션 / 데이터 구조'], ['prcuseAi', '활용 AI 모델'], ['prfomnc', '데이터 성능'], ['autool', '저작도구'], ['cnstcEntrps', '구축 업체']];
+  const detCache = new Map();
+  let curD = null, curDet = null, curTab = 'overview';
+  async function openDrawer(sn) {
+    curD = BY.get(sn); if (!curD) return;
+    curTab = 'overview'; curDet = detCache.get(sn) || null;
+    $('#ov').classList.add('on'); $('#dr').classList.add('on'); $('#dr').setAttribute('aria-hidden', 'false');
+    history.replaceState(null, '', '?sn=' + sn);
+    renderDrawer();
+    if (!curDet) {
+      try { const r = await fetch(`data/details/${sn}.json`); if (r.ok) { curDet = await r.json(); detCache.set(sn, curDet); } else curDet = { error: true }; } catch (e) { curDet = { error: true }; }
+      if (curD && curD.sn === sn) renderDrawer();
+    }
+  }
+  function closeDrawer() { $('#ov').classList.remove('on'); $('#dr').classList.remove('on'); $('#dr').setAttribute('aria-hidden', 'true'); history.replaceState(null, '', location.pathname); }
+  const tbl = (rows) => rows && rows.length ? `<table><thead><tr>${rows[0].map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '';
+  function renderDrawer() {
+    const d = curD, det = curDet;
+    $('#drHd').innerHTML = `
+      <h2>${esc(d.title)}</h2>
+      <div class="facts"><span>${availTag(d)}</span><span>분야 <b>${esc(d.field)}</b></span><span>유형 <b>${esc((d.types || []).join(', '))}</b></span>${d.gen_method ? `<span>생성방식 <b>${esc(d.gen_method)}</b></span>` : ''}<span>구축 <b>${esc(d.build_year)}</b></span><span>갱신 <b>${esc(d.update_ym || '–')}</b></span><span>용량 <b>${fmtB(d.size_bytes)}</b></span><span>조회 <b>${fmtN(d.views)}</b></span><span>다운로드 <b>${fmtN(d.downloads)}</b></span></div>
+      <div class="facts" style="margin-top:6px">${(d.tags || []).map(t => `<span class="tag sub">#${esc(t)}</span>`).join(' ')} ${d.approval_required ? '<span class="tag sub">개별 승인 필요</span>' : ''}${d.offline_available ? '<span class="tag sub">오프라인 이용</span>' : ''}${d.has_sample ? '<span class="tag sub">샘플 데이터</span>' : ''}${d.has_manual ? '<span class="tag sub">데이터 설명서</span>' : ''}${d.has_guide ? '<span class="tag sub">구축활용가이드</span>' : ''}</div>
+      <div class="acts"><a class="btn primary" href="${esc(d.url)}" target="_blank" rel="noopener">AI-Hub에서 열기 ↗</a><button class="btn" data-pick="${d.sn}">${picked(d.sn) ? '★ 담김 (클릭하면 제거)' : '☆ 내 데이터셋에 담기'}</button>${haveBtn(d.sn)}<span class="dim" style="font-size:12px">sn ${d.sn}</span></div>`;
+    const secs = det && det.sections || {};
+    $('#drTabs').innerHTML = SECS.map(([k, l]) => `<button data-tab="${k}" class="${curTab === k ? 'on' : ''}" ${k === 'overview' || (secs[k] && secs[k].length > 20) ? '' : 'disabled'}>${l}</button>`).join('');
+    let html = '';
+    if (curTab === 'overview') {
+      html += `<h4>소개</h4><pre>${esc(d.intro || '(없음)')}</pre>`;
+      if (d.purpose) html += `<h4>구축목적</h4><pre>${esc(d.purpose)}</pre>`;
+      const m = d.meta || {};
+      if (Object.keys(m).length) html += `<h4>메타데이터 요약</h4><dl class="kv">${Object.entries(m).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+      html += `<h4>구축 업체</h4><dl class="kv"><dt>수행기관(주관)</dt><dd>${esc(d.builder_main || '–')}</dd><dt>수행기관(참여)</dt><dd>${esc((d.builder_sub || []).join(', ') || '–')}</dd></dl>`;
+      if (!det) html += '<div class="loading">상세 불러오는 중…</div>';
+      else if (det.error) html += '<div class="loading">상세 파일(data/details)을 불러올 수 없습니다.</div>';
+      else {
+        if (det.ai_perf && det.ai_perf.length > 1) html += `<h4>AI 모델 성능 요약</h4>${tbl(det.ai_perf)}`;
+        if (det.version_history && det.version_history.length) html += `<h4>데이터 변경이력</h4>${tbl([['버전', '일자', '변경내용', '비고'], ...det.version_history])}`;
+        if (det.data_history && det.data_history.length) html += `<h4>데이터 히스토리</h4>${tbl([['일자', '변경내용', '비고'], ...det.data_history])}`;
+      }
+    } else html = secs[curTab] || '<p class="dim">(내용 없음)</p>';
+    $('#drBody').innerHTML = html; $('#drBody').scrollTop = 0;
+  }
+
+  // ------------------------------------------------------------ 내보내기 / 불러오기
+  function download(name, content, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); }
+  const csvQ = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  function csvAll() {
+    const h = ['dataSetSn', '데이터셋', '분야', '유형', '제공방식', '생성방식', '구축년도', '갱신년월', '용량(bytes)', '용량', '조회수', '다운로드수', '구축업체(주관)', '데이터 형식', '라벨링 유형', '내 데이터셋', '데이터 있음', 'URL'];
+    const lines = [h.map(csvQ).join(',')].concat(cur.map(d => [d.sn, d.title, d.field, (d.types || []).join('|'), d.avail, d.gen_method, d.build_year, d.update_ym, d.size_bytes, fmtB(d.size_bytes), d.views, d.downloads, d.builder_main, d.data_format, d.label_type, picked(d.sn) ? 'Y' : '', has(d.sn) ? 'Y' : '', d.url].map(csvQ).join(',')));
+    download('aihub_datasets.csv', '\ufeff' + lines.join('\r\n'), 'text/csv;charset=utf-8');
+  }
+  function csvMy() {
+    const h = ['dataSetSn', '데이터셋', '분야', '제공방식', '용량(bytes)', '용량', '데이터 있음', '메모', '로컬 경로', '담은 날', '완료일', 'URL'];
+    const lines = [h.map(csvQ).join(',')].concat(Object.values(MY.items).map(i => [i.sn, i.title, i.field, i.avail, i.size_bytes, fmtB(i.size_bytes), i.have ? 'Y' : '', i.memo, i.path, i.added_at, i.have_at, i.url].map(csvQ).join(',')));
+    download('my_datasets.csv', '\ufeff' + lines.join('\r\n'), 'text/csv;charset=utf-8');
+  }
+  function importMy(file) {
+    const rd = new FileReader();
+    rd.onload = () => { try { const j = JSON.parse(rd.result); const items = j.items || j; let n = 0; Object.values(items).forEach(i => { if (i && i.sn) { MY.items[i.sn] = { ...mk(i.sn), ...i }; n++; } }); saveMy(); refreshAll(); toast(`${n}개 병합했습니다`); } catch (e) { toast('JSON 형식이 올바르지 않습니다'); } };
+    rd.readAsText(file);
+  }
+
+  // ------------------------------------------------------------ 이벤트
+  let qT; $('#q').addEventListener('input', e => { clearTimeout(qT); qT = setTimeout(() => { st.q = e.target.value; st.page = 1; renderAll(); }, 120); });
+  $('#fAvail').addEventListener('change', e => { st.avail = e.target.value; st.page = 1; renderAll(); });
+  $('#fYear').addEventListener('change', e => { st.year = e.target.value; st.page = 1; renderAll(); });
+  $('#fGen').addEventListener('change', e => { st.gen = e.target.value; st.page = 1; renderAll(); });
+  $('#fMine').addEventListener('change', e => { st.mine = e.target.value; st.page = 1; renderAll(); });
+  $('#btnReset').addEventListener('click', () => { Object.assign(st, { q: '', avail: '', year: '', gen: '', mine: '', field: '', page: 1 }); st.types.clear(); $('#q').value = ''; ['#fAvail', '#fYear', '#fGen', '#fMine'].forEach(s => $(s).value = ''); renderChips(); renderAll(); });
+  $('#fieldChips').addEventListener('click', e => { const c = e.target.closest('[data-field]'); if (!c) return; st.field = st.field === c.dataset.field ? '' : c.dataset.field; st.page = 1; renderChips(); renderAll(); });
+  $('#typeChips').addEventListener('click', e => { const c = e.target.closest('[data-type]'); if (!c) return; const t = c.dataset.type; st.types.has(t) ? st.types.delete(t) : st.types.add(t); st.page = 1; renderChips(); renderAll(); });
+  $('#kpis').addEventListener('click', e => {
+    const k = e.target.closest('.kpi'); if (!k) return; const [g, v] = k.dataset.key.split(':');
+    if (g === 'all') { st.avail = ''; st.mine = ''; } else if (g === 'avail') { st.avail = st.avail === v ? '' : v; } else { st.mine = st.mine === v ? '' : v; }
+    $('#fAvail').value = st.avail; $('#fMine').value = st.mine; st.page = 1; renderAll();
+  });
+  $('#view-all thead').addEventListener('click', e => { const th = e.target.closest('th[data-k]'); if (!th) return; const k = th.dataset.k; if (st.k === k) st.dir *= -1; else { st.k = k; st.dir = ['size_bytes', 'downloads', 'have', 'build_year'].includes(k) ? -1 : 1; } st.page = 1; renderAll(); });
+  $('#view-my thead').addEventListener('click', e => { const th = e.target.closest('th[data-k]'); if (!th) return; const k = th.dataset.k; if (mst.k === k) mst.dir *= -1; else { mst.k = k; mst.dir = ['size_bytes', 'have', 'added_at'].includes(k) ? -1 : 1; } renderMy(); });
+  $('#pager').addEventListener('click', e => { const b = e.target.closest('button[data-p]'); if (!b || b.disabled) return; st.page = +b.dataset.p; renderAll(); $('#view-all .card').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  $('#pager').addEventListener('change', e => { if (e.target.id === 'per') { st.per = +e.target.value; localStorage.setItem('aihub_per', st.per); st.page = 1; renderAll(); } });
+  $('#metaRow').addEventListener('click', e => { if (e.target.id === 'btnCsvAll') csvAll(); });
+  // 공통: 담기 / 보유 / 제거 / 행 클릭
+  document.addEventListener('click', e => {
+    const pick = e.target.closest('[data-pick]'); if (pick) { togglePick(pick.dataset.pick); if (curD && $('#dr').classList.contains('on')) renderDrawer(); return; }
+    const hv = e.target.closest('[data-have]'); if (hv) { toggleHave(hv.dataset.have); if (curD && $('#dr').classList.contains('on')) renderDrawer(); return; }
+    const rm = e.target.closest('[data-rm]'); if (rm) { delete MY.items[rm.dataset.rm]; saveMy(); refreshAll(); toast('제거했습니다'); return; }
+    if (e.target.closest('a, input, button, select')) return;
+    const tr = e.target.closest('#tbody tr[data-sn]'); if (tr) return openDrawer(tr.dataset.sn);
+    const tc = e.target.closest('#mbody td.clk'); if (tc) openDrawer(tc.closest('tr').dataset.sn);
+  });
+  document.addEventListener('input', e => {
+    const m = e.target.dataset.memo, p = e.target.dataset.path; const sn = m || p; if (!sn || !MY.items[sn]) return;
+    if (m) MY.items[sn].memo = e.target.value; else MY.items[sn].path = e.target.value; saveMy();
+  });
+  $('#mq').addEventListener('input', e => { mst.q = e.target.value; renderMy(); });
+  $('#mf').addEventListener('change', e => { mst.f = e.target.value; renderMy(); });
+  $('#btnMyJson').addEventListener('click', () => download('my_datasets.json', JSON.stringify(MY, null, 1), 'application/json'));
+  $('#btnMyCsv').addEventListener('click', csvMy);
+  $('#fileMy').addEventListener('change', e => { if (e.target.files[0]) importMy(e.target.files[0]); e.target.value = ''; });
+  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => { document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b)); document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'view-' + b.dataset.view)); localStorage.setItem('aihub_view', b.dataset.view); }));
+  $('#drTabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (!b || b.disabled) return; curTab = b.dataset.tab; renderDrawer(); });
+  $('#drX').addEventListener('click', closeDrawer); $('#ov').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+  // ------------------------------------------------------------ 시작
+  renderChips(); refreshAll();
+  const qs = new URLSearchParams(location.search);
+  if ((qs.get('view') || localStorage.getItem('aihub_view')) === 'my') $('.tabs button[data-view=my]').click();
+  const sn0 = qs.get('sn'); if (sn0) openDrawer(sn0);
+})();
+</script>
+</body>
+</html>
