@@ -74,6 +74,17 @@ def crawler_running() -> bool:
         return True
 
 
+def crawler_tail() -> str:
+    """수집기 로그의 마지막 진행 줄을 가져온다(대기 중 상황 표시용)."""
+    path = os.path.join(ROOT, "crawl_previews.log")
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            lines = [x.strip() for x in fh.readlines()[-40:] if x.strip()]
+        return lines[-1][:90] if lines else "로그 없음"
+    except Exception:
+        return "로그 없음"
+
+
 def resume_crawler(workers: int) -> bool:
     """수집기가 죽어 있으면 다시 띄운다(중단 지점부터 이어받는다).
 
@@ -119,12 +130,18 @@ def wait_until_done(interval: int, stall_minutes: int, resume: bool, workers: in
             log("진행 %d/%d (%.1f%%) · 대기 %d건" % (c["done"], c["total"], c["done"] / c["total"] * 100, c["pending"]))
         last_done = c["done"]
 
-        if c["pending"] == 0:
-            log("미리보기 대기 0건 - 수집 완료")
-            return c
-
         alive = crawler_running()
         idle_min = (time.time() - stall_since) / 60
+
+        # preview_status 가 모두 정리돼도 수집기는 2단계(미리보기 본문 수집)를 더 돌린다.
+        # 프로세스가 실제로 끝날 때까지 기다려야 마지막 데이터까지 올라간다.
+        if c["pending"] == 0:
+            if alive:
+                log("대기 0건이지만 수집기가 아직 실행 중입니다 - 마무리를 기다립니다 (%s)" % crawler_tail())
+                time.sleep(interval)
+                continue
+            log("미리보기 대기 0건 · 수집기 종료 - 수집 완료")
+            return c
 
         # 수집기가 죽었는데 남은 게 있으면 먼저 되살려 본다.
         if not alive and resume and resumes < max_resume:
