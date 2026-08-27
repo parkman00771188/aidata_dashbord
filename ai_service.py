@@ -47,6 +47,18 @@ SKIP_MODEL_PARTS = ("embedding", "aqa", "imagen", "veo", "-tts", "image-generati
                     "lyria", "transcribe", "robotics", "antigravity")
 # 새로 설치했을 때 기본값 - 구글이 최신 Flash 로 자동 연결해 주는 별칭
 DEFAULT_MODEL = "gemini-flash-latest"
+
+# 100만 토큰당 단가(USD, 입력/출력). 공개 단가가 바뀌면 이 표만 고치면 된다.
+# 표에 없는 모델은 같은 등급(pro/flash/flash-lite)의 단가로 추정한다.
+PRICING = {
+    "gemini-2.5-pro": (1.25, 10.00),
+    "gemini-2.5-flash": (0.30, 2.50),
+    "gemini-2.5-flash-lite": (0.10, 0.40),
+    "gemini-2.0-flash": (0.10, 0.40),
+    "gemini-2.0-flash-lite": (0.075, 0.30),
+}
+TIER_PRICING = {0: (1.25, 10.00), 1: (0.30, 2.50), 2: (0.10, 0.40), 3: (0.30, 2.50)}
+USD_KRW = 1400.0  # 환율은 대략치 - 비용은 참고용 추정치다
 FILE_LOCK = threading.Lock()
 
 # 검색 정확도를 떨어뜨리는 흔한 낱말
@@ -250,7 +262,37 @@ def _parse_json(text: str):
     raise AiError("Gemini 응답을 JSON으로 해석하지 못했습니다.")
 
 
-def gemini_json(system: str, prompt: str, model: str = "", key: str = "", timeout: int = 180):
+def _collect_usage(data: dict, usage) -> None:
+    """응답의 토큰 사용량을 누적한다(thoughts 는 출력 토큰으로 과금된다)."""
+    if usage is None:
+        return
+    u = data.get("usageMetadata") or {}
+    usage["prompt"] = usage.get("prompt", 0) + int(u.get("promptTokenCount") or 0)
+    usage["output"] = usage.get("output", 0) + int(u.get("candidatesTokenCount") or 0)
+    usage["thoughts"] = usage.get("thoughts", 0) + int(u.get("thoughtsTokenCount") or 0)
+    usage["total"] = usage.get("total", 0) + int(u.get("totalTokenCount") or 0)
+    usage["calls"] = usage.get("calls", 0) + 1
+
+
+def estimate_cost(model: str, usage: dict) -> dict:
+    """토큰 사용량으로 대략적인 비용을 계산한다(공개 단가표 기준 추정)."""
+    model = model or DEFAULT_MODEL
+    rate, exact = PRICING.get(model), True
+    if rate is None:
+        rate, exact = TIER_PRICING[_model_tier(model.lower())], False
+    inp = usage.get("prompt", 0) / 1_000_000 * rate[0]
+    out = (usage.get("output", 0) + usage.get("thoughts", 0)) / 1_000_000 * rate[1]
+    usd = inp + out
+    return {
+        "usd": round(usd, 6),
+        "krw": round(usd * USD_KRW, 1),
+        "rate_in": rate[0], "rate_out": rate[1],
+        "exact": exact,
+        "basis": ("공개 단가 기준" if exact else "같은 등급 단가로 추정"),
+    }
+
+
+def gemini_json(system: str, prompt: str, model: str = "", key: str = "", timeout: int = 180, usage=None):
     settings = load_settings()
     key = key or settings.get("api_key") or ""
     model = model or settings.get("model") or DEFAULT_MODEL
@@ -263,6 +305,7 @@ def gemini_json(system: str, prompt: str, model: str = "", key: str = "", timeou
         "generationConfig": {"temperature": 0.25, "responseMimeType": "application/json"},
     }
     data = _request(url, payload, key=key, timeout=timeout)
+    _collect_usage(data, usage)
     return _parse_json(_extract_text(data))
 
 
@@ -468,6 +511,7 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
     started = time.time()
     settings = load_settings()
     model = model or settings.get("model") or DEFAULT_MODEL
+    usage = {}
 
     # 1단계 - 검색 키워드 추출
     fields_available = fields_available or []
@@ -475,7 +519,7 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
         plan = gemini_json(
             KEYWORD_SYSTEM,
             KEYWORD_PROMPT.format(query=query, fields=", ".join(fields_available[:40])),
-            model=model, timeout=90,
+            model=model, timeout=90, usage=usage,
         )
     except AiError:
         raise
@@ -496,7 +540,7 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
     result = gemini_json(
         RECO_SYSTEM,
         RECO_PROMPT.format(query=query, candidates=_candidate_block(candidates, aihub_access)),
-        model=model, timeout=240,
+        model=model, timeout=240, usage=usage,
     )
 
     by_uid = {row["uid"]: row for row in candidates}
@@ -539,6 +583,7 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
         "candidate_count": len(candidates),
         "dropped": dropped,
         "elapsed": round(time.time() - started, 1),
+        "usage": dict(usage, cost=estimate_cost(model, usage)) if usage else None,
     }
     save_reco(payload)
     return payload
