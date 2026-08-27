@@ -225,6 +225,9 @@
   .field label { display:block; font-weight:700; font-size:13px; margin-bottom:6px; }
   .field input,.field select { width:100%; max-width:none; }
   .field .help { color:var(--muted); font-size:12px; margin-top:6px; line-height:1.6; }
+  .field .inline-check { display:flex; align-items:center; gap:6px; margin-top:9px; font-weight:500; font-size:12.5px; color:var(--muted); cursor:pointer; }
+  .field .inline-check input { width:auto; height:auto; }
+  .field select optgroup { font-weight:700; color:var(--ink); }
   .modal footer { padding:14px 22px 20px; display:flex; gap:8px; justify-content:flex-end; }
   .toast { position:fixed; z-index:60; left:50%; bottom:88px; transform:translate(-50%,18px); opacity:0; color:#fff; background:#1f2b3d; padding:10px 16px; border-radius:10px; transition:.2s; pointer-events:none; max-width:90vw; }
   .toast.on { opacity:1; transform:translate(-50%,0); }
@@ -331,7 +334,9 @@
     <div class="field">
       <label for="setModel">모델</label>
       <select id="setModel"><option value="">불러오는 중…</option></select>
-      <div class="help" id="modelHelp">키를 저장하면 계정에서 사용 가능한 모델 목록을 불러옵니다. Flash 계열이 빠르고 저렴합니다.</div>
+      <div class="help" id="modelHelp">키를 저장하면 계정에서 사용 가능한 모델 목록을 불러옵니다. 최신 세대가 위쪽에 표시됩니다.</div>
+      <label class="inline-check"><input type="checkbox" id="setCustomOn"> 목록에 없는 모델 직접 입력</label>
+      <input id="setCustom" placeholder="예) gemini-3-flash-preview" autocomplete="off" hidden>
     </div>
   </div>
   <footer><button class="btn" id="setCancel">닫기</button><button class="btn" id="setReload">모델 새로고침</button><button class="btn primary" id="setSave">저장</button></footer>
@@ -353,7 +358,7 @@
   let stats={total:0,sources:[],meta:{}}, facets={fields:[],formats:[]}, current=[], total=0;
   let detail=null, detailTab='overview', loadToken=0;
   let MY={updated_at:null,items:{}}, saveTimer, toastTimer;
-  let RECOS=[], activeReco=null, aiBusy=false, settings={has_key:false,model:''};
+  let RECOS=[], activeReco=null, aiBusy=false, settings={has_key:false,model:''}, MODELS=[];
 
   function notify(text){const el=$('#toast');el.textContent=text;el.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('on'),2200)}
   async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m)}return r.json()}
@@ -512,9 +517,22 @@
   async function loadSettings(){try{settings=await api('/api/settings')}catch(e){settings={has_key:false,model:''}}
     $('#aiModelInfo').innerHTML=settings.has_key?`<span>모델 <b>${esc(settings.model)}</b></span>`:`<span>Gemini API 키 미설정 · 오른쪽 위 ⚙ 설정에서 등록</span>`}
   function openSettings(){$('#settingsModal').classList.add('on');$('#setKey').value='';$('#setKey').placeholder=settings.has_key?settings.key_hint+' (변경할 때만 입력)':'AIza...';loadModels()}
+  function modelNote(id){const m=MODELS.find(x=>x.id===id);if(!m)return '';
+    const lim=m.input_limit?` · 입력 ${fmt(m.input_limit)} 토큰`:'';
+    return (m.note||lim)?`<br><b>${esc(m.id)}</b>${esc(m.note?' — '+m.note:'')}${lim}`:''}
   async function loadModels(){const sel=$('#setModel');sel.innerHTML='<option value="">불러오는 중…</option>';
-    try{const d=await api('/api/ai/models');sel.innerHTML=d.models.map(m=>`<option value="${esc(m.id)}" ${m.id===(settings.model||d.current)?'selected':''}>${esc(m.label)}${m.label===m.id?'':' — '+esc(m.id)}</option>`).join('');
-      $('#modelHelp').textContent=d.error?d.error:'계정에서 사용 가능한 모델입니다. Flash 계열이 빠르고 저렴합니다.'}
+    try{const d=await api('/api/ai/models');MODELS=d.models||[];
+      const cur=settings.model||d.current||'';
+      if(cur&&!MODELS.some(m=>m.id===cur))MODELS=[{id:cur,label:cur,family:'현재 설정',note:'저장된 모델'},...MODELS];
+      const fams=[];MODELS.forEach(m=>{const f=m.family||'기타';if(!fams.includes(f))fams.push(f)});
+      sel.innerHTML=fams.map(f=>`<optgroup label="${esc(f)}">`+MODELS.filter(m=>(m.family||'기타')===f)
+        .map(m=>`<option value="${esc(m.id)}" ${m.id===cur?'selected':''}>${esc(m.label)}${m.label===m.id?'':' — '+esc(m.id)}</option>`).join('')+'</optgroup>').join('');
+      const newest=MODELS.find(m=>(m.family||'').startsWith('Gemini'));
+      const tip=newest&&newest.id!==cur?` <a href="#" id="pickLatest">최신 모델(${esc(newest.id)})로 맞추기</a>`:'';
+      $('#modelHelp').innerHTML=(d.error?esc(d.error):d.live
+        ?`계정에서 쓸 수 있는 모델 <b>${fmt(MODELS.length)}개</b>를 불러왔습니다. 최신 세대가 위쪽입니다.${tip}`
+        :'아직 <b>기본 목록</b>입니다. 키를 저장하면 계정의 실제 최신 모델을 모두 불러옵니다.')+modelNote(cur);
+      const pick=$('#pickLatest');if(pick)pick.onclick=e=>{e.preventDefault();sel.value=newest.id;sel.onchange()}}
     catch(e){sel.innerHTML='<option value="">모델을 불러오지 못했습니다</option>';$('#modelHelp').textContent=e.message}}
 
   // ------------------------------------------------------------------ 이벤트
@@ -551,13 +569,21 @@
   $('#setCancel').onclick=()=>$('#settingsModal').classList.remove('on');
   $('#settingsModal').onclick=e=>{if(e.target.id==='settingsModal')$('#settingsModal').classList.remove('on')};
   $('#setReload').onclick=async()=>{const key=$('#setKey').value.trim();if(key)await post('/api/settings',{api_key:key});await loadSettings();loadModels()};
-  $('#setSave').onclick=async()=>{const body={model:$('#setModel').value};const key=$('#setKey').value.trim();if(key)body.api_key=key;
-    try{settings=await post('/api/settings',body);await loadSettings();$('#settingsModal').classList.remove('on');notify('설정을 저장했습니다')}catch(e){notify(e.message)}};
+  $('#setKey').onchange=async()=>{const key=$('#setKey').value.trim();if(!key)return;
+    try{settings=await post('/api/settings',{api_key:key});await loadSettings();await loadModels();notify('키를 저장하고 모델 목록을 불러왔습니다')}catch(e){notify(e.message)}};
+  $('#setModel').onchange=()=>{$('#modelHelp').innerHTML=$('#modelHelp').innerHTML.split('<br>')[0]+modelNote($('#setModel').value)};
+  $('#setCustomOn').onchange=e=>{const on=e.target.checked;$('#setCustom').hidden=!on;$('#setModel').disabled=on;
+    if(on){$('#setCustom').value=$('#setModel').value;$('#setCustom').focus()}};
+  $('#setSave').onclick=async()=>{const custom=$('#setCustomOn').checked?$('#setCustom').value.trim():'';
+    const body={model:custom||$('#setModel').value};const key=$('#setKey').value.trim();if(key)body.api_key=key;
+    if(!body.model){notify('모델을 선택해 주세요');return}
+    try{settings=await post('/api/settings',body);await loadSettings();$('#settingsModal').classList.remove('on');notify('설정을 저장했습니다 · '+settings.model)}catch(e){notify(e.message)}};
 
   // ------------------------------------------------------------------ 시작
   try{
     await loadMy();await loadSettings();await loadStats();await loadFacets();await loadList();loadRecos();
     const qs=new URLSearchParams(location.search);
+    if(qs.get('settings'))openSettings();
     const rid=qs.get('reco');
     if(rid){await loadRecos();activeReco=RECOS.find(x=>x.id===rid)||null;await changeSource('ai');if(activeReco)renderReco()}
     else if(qs.get('view')==='ai')await changeSource('ai');

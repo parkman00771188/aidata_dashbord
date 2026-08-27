@@ -22,13 +22,31 @@ from catalog_db import DATA_DIR, DB_PATH, connect, decode_json
 SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")
 RECO_PATH = os.path.join(DATA_DIR, "recommendations.json")
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
+# 키를 저장하기 전에 보여줄 기본 목록. 키를 넣고 '모델 새로고침'을 누르면
+# 계정에서 실제 사용 가능한 최신 모델 목록으로 완전히 대체된다.
 FALLBACK_MODELS = [
-    {"id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash (빠름·기본 권장)"},
-    {"id": "gemini-2.5-pro", "label": "Gemini 2.5 Pro (정확·느림)"},
-    {"id": "gemini-2.5-flash-lite", "label": "Gemini 2.5 Flash Lite (가장 빠름)"},
-    {"id": "gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
+    {"id": "gemini-flash-latest", "label": "Gemini Flash (항상 최신)", "family": "항상 최신 (별칭)",
+     "note": "구글이 최신 Flash 모델로 자동 연결하는 별칭"},
+    {"id": "gemini-pro-latest", "label": "Gemini Pro (항상 최신)", "family": "항상 최신 (별칭)",
+     "note": "구글이 최신 Pro 모델로 자동 연결하는 별칭"},
+    {"id": "gemini-3-pro-preview", "label": "Gemini 3 Pro Preview", "family": "Gemini 3",
+     "note": "최신 세대 · 가장 정확, 느리고 비쌈"},
+    {"id": "gemini-2.5-pro", "label": "Gemini 2.5 Pro", "family": "Gemini 2.5",
+     "note": "정확도 우선"},
+    {"id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash", "family": "Gemini 2.5",
+     "note": "속도·비용 균형 (기본값)"},
+    {"id": "gemini-2.5-flash-lite", "label": "Gemini 2.5 Flash Lite", "family": "Gemini 2.5",
+     "note": "가장 빠르고 저렴"},
+    {"id": "gemini-2.0-flash", "label": "Gemini 2.0 Flash", "family": "Gemini 2.0",
+     "note": "이전 세대"},
 ]
-DEFAULT_MODEL = "gemini-2.5-flash"
+# 텍스트(JSON) 출력이 아닌 모델은 목록에서 제외한다.
+# 이미지 생성(nano banana), 음악(lyria), 음성(tts/transcribe), 임베딩, 로보틱스, 실시간 등.
+SKIP_MODEL_PARTS = ("embedding", "aqa", "imagen", "veo", "-tts", "image-generation",
+                    "native-audio", "-live", "computer-use", "-image", "nano-banana",
+                    "lyria", "transcribe", "robotics", "antigravity")
+# 새로 설치했을 때 기본값 - 구글이 최신 Flash 로 자동 연결해 주는 별칭
+DEFAULT_MODEL = "gemini-flash-latest"
 FILE_LOCK = threading.Lock()
 
 # 검색 정확도를 떨어뜨리는 흔한 낱말
@@ -120,21 +138,85 @@ def _request(url: str, payload=None, key: str = "", timeout: int = 180):
         raise AiError("Gemini 응답이 지연되어 시간 초과되었습니다. 더 빠른 모델(Flash)을 선택해 보세요.")
 
 
+def _model_tier(lower: str) -> int:
+    if "-pro" in lower:
+        return 0
+    if "flash-lite" in lower:
+        return 2
+    if "flash" in lower:
+        return 1
+    return 3
+
+
+def _model_version(lower: str):
+    m = re.match(r"gemini-(\d+)(?:[.\-](\d+))?", lower)
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2) or 0)
+
+
+def model_family(model_id: str) -> str:
+    lower = model_id.lower()
+    if lower.endswith("-latest"):
+        return "항상 최신 (별칭)"
+    ver = _model_version(lower)
+    if ver:
+        return "Gemini %s" % (str(ver[0]) if ver[1] == 0 and "-%d." % ver[0] not in lower
+                              else "%d.%d" % ver)
+    if lower.startswith("gemma"):
+        return "Gemma"
+    return "기타"
+
+
+def model_sort_key(model_id: str):
+    """새 세대가 항상 위로 오도록 버전을 숫자로 비교한다(하드코딩 없음)."""
+    lower = model_id.lower()
+    tier = _model_tier(lower)
+    stage = 1 if any(x in lower for x in ("preview", "-exp", "experimental")) else 0
+    if lower.endswith("-latest"):
+        return (0, 0, 0, tier, 0, lower)
+    ver = _model_version(lower)
+    if ver:
+        return (1, -ver[0], -ver[1], tier, stage, lower)
+    return (2, 0, 0, tier, stage, lower)
+
+
 def list_models(key: str = "") -> list:
     key = key or load_settings().get("api_key") or ""
     if not key:
         return FALLBACK_MODELS
-    data = _request(GEMINI_BASE + "/models?pageSize=200", key=key, timeout=30)
-    models = []
-    for m in data.get("models", []):
-        if "generateContent" not in (m.get("supportedGenerationMethods") or []):
+    models, token, pages = [], "", 0
+    while pages < 6:
+        url = GEMINI_BASE + "/models?pageSize=200" + (("&pageToken=" + urllib.parse.quote(token)) if token else "")
+        data = _request(url, key=key, timeout=30)
+        for m in data.get("models", []):
+            if "generateContent" not in (m.get("supportedGenerationMethods") or []):
+                continue
+            mid = (m.get("name") or "").split("/")[-1]
+            lower = mid.lower()
+            if not mid or any(part in lower for part in SKIP_MODEL_PARTS):
+                continue
+            models.append({
+                "id": mid,
+                "label": m.get("displayName") or mid,
+                "family": model_family(mid),
+                "note": (m.get("description") or "").strip()[:110],
+                "input_limit": m.get("inputTokenLimit") or 0,
+                "output_limit": m.get("outputTokenLimit") or 0,
+            })
+        token = data.get("nextPageToken") or ""
+        pages += 1
+        if not token:
+            break
+    if not models:
+        return FALLBACK_MODELS
+    seen, unique = set(), []
+    for m in sorted(models, key=lambda x: model_sort_key(x["id"])):
+        if m["id"] in seen:
             continue
-        mid = (m.get("name") or "").split("/")[-1]
-        if not mid or "embedding" in mid or "aqa" in mid:
-            continue
-        models.append({"id": mid, "label": m.get("displayName") or mid})
-    models.sort(key=lambda x: (0 if x["id"].startswith("gemini-2.5") else 1 if x["id"].startswith("gemini-2") else 2, x["id"]))
-    return models or FALLBACK_MODELS
+        seen.add(m["id"])
+        unique.append(m)
+    return unique
 
 
 def _extract_text(data: dict) -> str:

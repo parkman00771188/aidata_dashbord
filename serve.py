@@ -76,11 +76,33 @@ def prepare_catalog():
                 snapshot.restore()
         except Exception as e:  # noqa
             print('스냅샷 복원 실패: %r' % e, flush=True)
-    con = connect(DB_PATH)
-    init_db(con)
-    import_aihub(con)
-    con.close()
+    # 수집기가 DB에 쓰는 중이면 잠금이 걸릴 수 있다. 동기화는 필요할 때만 시도하고,
+    # 실패하더라도 조회 기능은 그대로 동작하므로 서버를 계속 띄운다.
+    try:
+        con = connect(DB_PATH)
+        try:
+            init_db(con)
+            if aihub_sync_needed(con):
+                import_aihub(con)
+        finally:
+            con.close()
+    except Exception as e:  # noqa
+        print('AI Hub 동기화를 건너뜁니다(%s). 수집기가 DB를 쓰는 중일 수 있으며 조회는 정상 동작합니다.'
+              % e.__class__.__name__, flush=True)
     load_aihub_access(force=True)
+
+
+def aihub_sync_needed(con):
+    """data/datasets.json 이 새로 수집됐을 때만 카탈로그에 다시 넣는다."""
+    try:
+        with open(AIHUB_JSON, encoding='utf-8') as f:
+            stamp = (json.load(f).get('meta') or {}).get('crawled_at', '')
+    except Exception:
+        return False
+    row = con.execute("SELECT value FROM crawl_meta WHERE key='aihub_crawled_at'").fetchone()
+    have = (row[0] if row else '') or ''
+    count = con.execute("SELECT COUNT(*) FROM catalog_items WHERE source='AI Hub' AND active=1").fetchone()[0]
+    return count == 0 or have.strip('"') != stamp
 
 
 def one(query, key, default=''):
@@ -169,12 +191,14 @@ class Handler(SimpleHTTPRequestHandler):
         if path == '/api/settings':
             return self._json(200, ai_service.public_settings())
         if path == '/api/ai/models':
+            pub = ai_service.public_settings()
             try:
-                return self._json(200, {'models': ai_service.list_models(),
-                                        'current': ai_service.public_settings()['model']})
+                models = ai_service.list_models()
+                live = pub['has_key'] and models is not ai_service.FALLBACK_MODELS
+                return self._json(200, {'models': models, 'live': live, 'current': pub['model']})
             except ai_service.AiError as e:
-                return self._json(200, {'models': ai_service.FALLBACK_MODELS, 'error': str(e),
-                                        'current': ai_service.public_settings()['model']})
+                return self._json(200, {'models': ai_service.FALLBACK_MODELS, 'live': False,
+                                        'error': str(e), 'current': pub['model']})
         if path == '/api/recommendations':
             return self._json(200, ai_service.load_recos())
         if path == '/':
