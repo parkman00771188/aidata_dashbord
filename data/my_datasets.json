@@ -1,7 +1,7 @@
 {
- "updated_at": "2026-08-26 15:53:54",
+ "updated_at": "2026-08-27 16:17:48",
  "items": {
-  "208": {
+  "aihub:208": {
    "sn": "208",
    "title": "비대면 진료를 위한 의료진 및 환자 음성",
    "field": "헬스케어",
@@ -12,9 +12,12 @@
    "memo": "",
    "path": "",
    "added_at": "2026-08-26",
-   "have_at": null
+   "have_at": null,
+   "uid": "aihub:208",
+   "source": "AI Hub",
+   "source_id": "208"
   },
-  "226": {
+  "aihub:226": {
    "sn": "226",
    "title": "치매 고위험군 웨어러블 라이프로그",
    "field": "헬스케어",
@@ -25,9 +28,12 @@
    "memo": "",
    "path": "",
    "added_at": "2026-08-26",
-   "have_at": null
+   "have_at": null,
+   "uid": "aihub:226",
+   "source": "AI Hub",
+   "source_id": "226"
   },
-  "227": {
+  "aihub:227": {
    "sn": "227",
    "title": "치매진단 뇌영상 데이터",
    "field": "헬스케어",
@@ -38,9 +44,12 @@
    "memo": "",
    "path": "",
    "added_at": "2026-08-26",
-   "have_at": null
+   "have_at": null,
+   "uid": "aihub:227",
+   "source": "AI Hub",
+   "source_id": "227"
   },
-  "71806": {
+  "aihub:71806": {
    "sn": "71806",
    "title": "심리상담 데이터",
    "field": "헬스케어",
@@ -51,9 +60,12 @@
    "memo": "",
    "path": "",
    "added_at": "2026-08-26",
-   "have_at": null
+   "have_at": null,
+   "uid": "aihub:71806",
+   "source": "AI Hub",
+   "source_id": "71806"
   },
-  "71874": {
+  "aihub:71874": {
    "sn": "71874",
    "title": "전문 의학지식 데이터",
    "field": "헬스케어",
@@ -64,9 +76,12 @@
    "memo": "",
    "path": "",
    "added_at": "2026-08-26",
-   "have_at": "2026-08-26"
+   "have_at": "2026-08-26",
+   "uid": "aihub:71874",
+   "source": "AI Hub",
+   "source_id": "71874"
   },
-  "71875": {
+  "aihub:71875": {
    "sn": "71875",
    "title": "필수의료 의학지식 데이터",
    "field": "헬스케어",
@@ -77,9 +92,12 @@
    "memo": "",
    "path": "",
    "added_at": "2026-08-26",
-   "have_at": "2026-08-26"
+   "have_at": "2026-08-26",
+   "uid": "aihub:71875",
+   "source": "AI Hub",
+   "source_id": "71875"
   },
-  "71964": {
+  "aihub:71964": {
    "sn": "71964",
    "title": "뇌졸중 이미지 합성 데이터",
    "field": "헬스케어",
@@ -90,9 +108,12 @@
    "memo": "",
    "path": "",
    "added_at": "2026-08-26",
-   "have_at": "2026-08-26"
+   "have_at": "2026-08-26",
+   "uid": "aihub:71964",
+   "source": "AI Hub",
+   "source_id": "71964"
   },
-  "71966": {
+  "aihub:71966": {
    "sn": "71966",
    "title": "근골격계 질환 생체 신호 데이터",
    "field": "헬스케어",
@@ -103,7 +124,10 @@
    "memo": "",
    "path": "",
    "added_at": "2026-08-26",
-   "have_at": "2026-08-26"
+   "have_at": "2026-08-26",
+   "uid": "aihub:71966",
+   "source": "AI Hub",
+   "source_id": "71966"
   }
  }
 }

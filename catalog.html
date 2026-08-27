@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>통합 데이터 카탈로그</title>
+<style>
+  :root { --bg:#f5f7fb; --card:#fff; --ink:#172033; --muted:#68758a; --line:#dde3ec; --blue:#235fd8; --blue2:#eaf1ff; --green:#16845b; --green2:#e8f7f0; --violet:#6b4bd8; --violet2:#f0ecff; --amber:#a65d08; --amber2:#fff3df; --rose:#c0344d; --rose2:#ffecef; --shadow:0 18px 44px rgba(35,52,84,.13); }
+  * { box-sizing:border-box; }
+  html,body { margin:0; min-height:100%; background:var(--bg); color:var(--ink); font:14px/1.5 Inter,"Pretendard","Noto Sans KR",system-ui,sans-serif; }
+  button,input,select,textarea { font:inherit; }
+  button { color:inherit; }
+  a { color:var(--blue); }
+  .top { position:sticky; top:0; z-index:20; background:rgba(255,255,255,.94); border-bottom:1px solid var(--line); backdrop-filter:blur(14px); }
+  .top-in { max-width:1500px; height:68px; margin:auto; padding:0 24px; display:flex; align-items:center; gap:26px; }
+  .brand { display:flex; align-items:center; gap:11px; font-weight:800; font-size:18px; white-space:nowrap; }
+  .mark { width:34px; height:34px; display:grid; place-items:center; border-radius:11px; color:#fff; background:linear-gradient(145deg,#276bdf,#6749d5); font-size:13px; box-shadow:0 7px 16px rgba(58,82,195,.25); }
+  .source-tabs { align-self:stretch; display:flex; align-items:stretch; gap:4px; }
+  .source-tabs button { border:0; background:none; padding:0 16px; font-weight:650; color:var(--muted); cursor:pointer; position:relative; white-space:nowrap; }
+  .source-tabs button.on { color:var(--blue); }
+  .source-tabs button.on:after { content:""; position:absolute; left:13px; right:13px; bottom:0; height:3px; border-radius:3px 3px 0 0; background:var(--blue); }
+  .source-tabs button.ai { color:var(--violet); }
+  .source-tabs button.ai.on:after { background:var(--violet); }
+  .count { padding:2px 7px; margin-left:4px; border-radius:12px; background:#edf0f5; color:#59677a; font-size:11px; }
+  .source-tabs button.on .count { color:var(--blue); background:var(--blue2); }
+  .source-tabs button.ai.on .count { color:var(--violet); background:var(--violet2); }
+  .top-status { margin-left:auto; display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; white-space:nowrap; }
+  .dot { width:8px; height:8px; border-radius:50%; background:#aab4c2; }
+  .dot.ok { background:#21a671; box-shadow:0 0 0 4px #e3f7ef; }
+  .icon-btn { width:36px; height:36px; border:1px solid var(--line); border-radius:10px; background:#fff; cursor:pointer; display:grid; place-items:center; }
+  .icon-btn:hover { border-color:#9eabbd; background:#f9fafc; }
+  .icon-btn svg { width:18px; height:18px; }
+  .page { max-width:1500px; margin:auto; padding:28px 24px 120px; }
+  .hero { display:flex; justify-content:space-between; align-items:flex-end; gap:24px; margin-bottom:22px; }
+  .eyebrow { font-size:12px; color:var(--blue); font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+  h1 { font-size:29px; line-height:1.2; margin:5px 0 7px; letter-spacing:-.03em; }
+  .hero p { margin:0; color:var(--muted); }
+  .updated { color:var(--muted); font-size:12px; text-align:right; }
+  .kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+  .kpi { background:var(--card); border:1px solid var(--line); border-radius:15px; padding:17px 18px; min-height:95px; }
+  .kpi .label { color:var(--muted); font-size:12px; }
+  .kpi .num { margin-top:5px; font-weight:800; font-size:25px; letter-spacing:-.03em; }
+  .kpi .sub { color:var(--muted); font-size:11px; margin-top:2px; }
+  .filters { background:var(--card); border:1px solid var(--line); border-radius:15px; padding:14px; margin-bottom:14px; }
+  .filter-row { display:flex; gap:9px; flex-wrap:wrap; align-items:center; }
+  .filter-row + .filter-row { margin-top:12px; padding-top:12px; border-top:1px dashed var(--line); }
+  .search { flex:1 1 330px; position:relative; }
+  .search svg { position:absolute; width:18px; height:18px; left:13px; top:11px; color:#7a8799; }
+  input,select,.btn { height:41px; border:1px solid #ccd4e0; border-radius:10px; background:#fff; padding:0 12px; outline:none; }
+  input:focus,select:focus,textarea:focus { border-color:#6b96ea; box-shadow:0 0 0 3px #edf3ff; }
+  .search input { width:100%; padding-left:40px; }
+  select { max-width:230px; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; font-weight:650; }
+  .btn:hover { border-color:#9eabbd; background:#f9fafc; }
+  .btn.primary { color:#fff; background:var(--blue); border-color:var(--blue); }
+  .btn.primary:hover { background:#1c50ba; }
+  .btn.violet { color:#fff; background:var(--violet); border-color:var(--violet); }
+  .btn.sm { height:32px; padding:0 10px; font-size:12px; }
+  .btn:disabled { opacity:.55; cursor:default; }
+  .flabel { font-size:12px; color:var(--muted); font-weight:700; margin-right:2px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { display:inline-flex; align-items:center; gap:5px; height:30px; padding:0 11px; border:1px solid #d5dce7; border-radius:9px; background:#fff; cursor:pointer; font-size:12.5px; color:#42506a; }
+  .chip:hover { border-color:#9db4dd; background:#f8fbff; }
+  .chip.on { border-color:var(--blue); background:var(--blue2); color:var(--blue); font-weight:700; }
+  .chip .c { font-size:11px; color:#8b97a8; }
+  .chip.on .c { color:var(--blue); }
+  .chip .box { width:13px; height:13px; border:1.5px solid #c2ccdb; border-radius:4px; display:inline-grid; place-items:center; font-size:9px; color:#fff; }
+  .chip.on .box { background:var(--blue); border-color:var(--blue); }
+  .list-meta { min-height:34px; display:flex; align-items:center; gap:13px; color:var(--muted); font-size:12px; flex-wrap:wrap; }
+  .list-meta b { color:var(--ink); }
+  .list-meta .grow { flex:1; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:15px; overflow:hidden; }
+  .table-wrap { overflow:auto; }
+  table { width:100%; border-collapse:collapse; min-width:1240px; }
+  th { background:#fafbfc; color:#566478; font-size:12px; font-weight:700; text-align:left; padding:11px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th.sort { cursor:pointer; }
+  th.sort:hover { color:var(--blue); }
+  td { padding:12px; border-bottom:1px solid #edf0f4; vertical-align:middle; }
+  tbody tr { transition:.12s; }
+  tbody tr.clickable { cursor:pointer; }
+  tbody tr.clickable:hover { background:#f7faff; }
+  tbody tr:last-child td { border-bottom:0; }
+  .r { text-align:right; font-variant-numeric:tabular-nums; }
+  .star { border:0; background:none; cursor:pointer; font-size:20px; color:#aab4c2; width:28px; padding:0; }
+  .star.on { color:#f0a100; }
+  .dataset-title { font-weight:720; line-height:1.35; max-width:430px; }
+  .summary { max-width:430px; color:var(--muted); font-size:12px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .badge { display:inline-flex; align-items:center; gap:4px; border-radius:7px; padding:3px 7px; font-size:11px; font-weight:700; white-space:nowrap; }
+  .badge.ai { color:var(--violet); background:var(--violet2); }
+  .badge.public { color:var(--blue); background:var(--blue2); }
+  .badge.field { color:#415068; background:#eef1f5; }
+  .badge.format { color:var(--green); background:var(--green2); margin:1px 3px 1px 0; }
+  .badge.preview { color:var(--green); background:var(--green2); }
+  .badge.wait { color:var(--amber); background:var(--amber2); }
+  .badge.download { color:var(--green); background:var(--green2); }
+  .badge.lock { color:var(--amber); background:var(--amber2); }
+  .badge.muted { color:#5c6a80; background:#eef1f5; }
+  .badge.rose { color:var(--rose); background:var(--rose2); }
+  .acc-note { display:block; color:var(--muted); font-size:11px; margin-top:3px; }
+  .org { max-width:210px; color:#47566a; }
+  .pager { min-height:58px; display:flex; justify-content:center; align-items:center; gap:5px; border-top:1px solid var(--line); padding:10px; flex-wrap:wrap; }
+  .pager button { min-width:34px; height:34px; padding:0 9px; border:1px solid #d6dce5; border-radius:8px; background:#fff; cursor:pointer; }
+  .pager button.on { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .pager button:disabled { opacity:.4; cursor:default; }
+  .pager .info { color:var(--muted); font-size:12px; margin-right:9px; }
+  .pager select { height:34px; margin-left:8px; }
+  .empty { padding:70px 20px; text-align:center; color:var(--muted); }
+  .empty b { display:block; color:var(--ink); margin-bottom:4px; font-size:16px; }
+  .loading-line { height:3px; background:linear-gradient(90deg,transparent,var(--blue),transparent); background-size:45% 100%; animation:load 1.1s infinite linear; display:none; }
+  .loading .loading-line { display:block; }
+  @keyframes load { from{background-position:-60% 0} to{background-position:160% 0} }
+
+  /* ---------- 하단 AI 질문 바 ---------- */
+  .askbar { position:fixed; z-index:30; left:0; right:0; bottom:0; padding:14px 24px 20px; background:linear-gradient(180deg,rgba(245,247,251,0),rgba(245,247,251,.92) 45%); pointer-events:none; }
+  .askbar-in { max-width:820px; margin:auto; pointer-events:auto; }
+  .askbar button { width:100%; display:flex; align-items:center; gap:11px; height:54px; padding:0 12px 0 18px; border:1px solid #cdd7e8; border-radius:16px; background:#fff; box-shadow:0 12px 30px rgba(33,49,82,.14); cursor:pointer; text-align:left; color:var(--muted); }
+  .askbar button:hover { border-color:var(--violet); color:var(--ink); }
+  .askbar .spark { width:30px; height:30px; border-radius:9px; display:grid; place-items:center; color:#fff; background:linear-gradient(145deg,#7a53e6,#3f7ae4); font-size:14px; flex:0 0 auto; }
+  .askbar .go { margin-left:auto; flex:0 0 auto; height:34px; padding:0 13px; border-radius:10px; background:var(--violet2); color:var(--violet); font-size:12px; font-weight:800; display:grid; place-items:center; }
+
+  /* ---------- AI 추천 뷰 ---------- */
+  .ai-grid { display:grid; grid-template-columns:280px minmax(0,1fr); gap:16px; align-items:start; }
+  .ai-side { background:var(--card); border:1px solid var(--line); border-radius:15px; overflow:hidden; position:sticky; top:88px; }
+  .ai-side h3 { margin:0; padding:14px 16px; font-size:13px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:7px; }
+  .ai-side .list { max-height:60vh; overflow:auto; }
+  .reco-item { padding:12px 16px; border-bottom:1px solid #eef1f5; cursor:pointer; position:relative; }
+  .reco-item:hover { background:#f7faff; }
+  .reco-item.on { background:var(--violet2); box-shadow:inset 3px 0 0 var(--violet); }
+  .reco-item .t { font-weight:700; font-size:13px; line-height:1.35; padding-right:22px; }
+  .reco-item .m { color:var(--muted); font-size:11px; margin-top:4px; display:flex; gap:8px; flex-wrap:wrap; }
+  .reco-item .del { position:absolute; right:8px; top:9px; border:0; background:none; color:#b6bfcd; cursor:pointer; font-size:15px; line-height:1; padding:2px 4px; border-radius:6px; }
+  .reco-item .del:hover { color:var(--rose); background:#fff; }
+  .ai-main { min-width:0; }
+  .composer { background:var(--card); border:1px solid var(--line); border-radius:15px; padding:26px; }
+  .composer h2 { margin:0 0 6px; font-size:22px; letter-spacing:-.02em; }
+  .composer p.hint { margin:0 0 16px; color:var(--muted); }
+  .composer textarea { width:100%; min-height:104px; resize:vertical; border:1px solid #ccd4e0; border-radius:12px; padding:13px 14px; outline:none; line-height:1.6; }
+  .composer-foot { display:flex; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap; }
+  .composer-foot .grow { flex:1; }
+  .ex { display:flex; flex-wrap:wrap; gap:6px; margin-top:14px; }
+  .ex button { border:1px dashed #ccd6e4; background:#fbfcfe; color:#4a5a75; border-radius:9px; padding:6px 11px; font-size:12.5px; cursor:pointer; }
+  .ex button:hover { border-color:var(--violet); color:var(--violet); background:#fff; }
+  .ai-status { display:flex; align-items:center; gap:10px; padding:16px 18px; border-radius:13px; background:var(--violet2); color:#4b3aa8; margin-top:16px; font-weight:650; }
+  .spin { width:16px; height:16px; border:2px solid #c9bcf5; border-top-color:var(--violet); border-radius:50%; animation:sp .8s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg) } }
+  .err { padding:14px 16px; border-radius:12px; background:var(--rose2); color:var(--rose); margin-top:16px; }
+  .rc { background:var(--card); border:1px solid var(--line); border-radius:15px; padding:22px; margin-top:16px; }
+  .rc > h3 { margin:0 0 14px; font-size:15px; display:flex; align-items:center; gap:8px; }
+  .rc > h3 .n { font-size:11px; color:var(--muted); font-weight:600; background:#eef1f5; border-radius:11px; padding:2px 8px; }
+  .result-head h2 { margin:8px 0 8px; font-size:24px; letter-spacing:-.025em; }
+  .result-head .goal { color:#3c4a61; line-height:1.7; }
+  .result-meta { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; color:var(--muted); font-size:12px; }
+  .feature { display:grid; grid-template-columns:26px minmax(0,1fr); gap:12px; padding:13px 0; border-top:1px solid #eef1f5; }
+  .feature:first-of-type { border-top:0; padding-top:0; }
+  .feature .no { width:26px; height:26px; border-radius:9px; background:var(--blue2); color:var(--blue); display:grid; place-items:center; font-size:12px; font-weight:800; }
+  .feature .fn { font-weight:750; }
+  .feature .fd { color:#4d5b72; margin-top:3px; }
+  .feature .need { margin-top:6px; font-size:12px; color:var(--muted); }
+  .feature .need b { color:#3c4a61; }
+  .group-head { display:flex; align-items:center; gap:8px; padding:10px 12px; background:#f7f9fc; border:1px solid var(--line); border-radius:11px; margin:16px 0 8px; font-weight:750; font-size:13px; }
+  .group-head:first-child { margin-top:0; }
+  .group-head .n { font-size:11px; color:var(--muted); background:#fff; border:1px solid var(--line); border-radius:11px; padding:1px 8px; }
+  .drow { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:14px; padding:14px; border:1px solid var(--line); border-radius:12px; margin-bottom:8px; background:#fff; }
+  .drow:hover { border-color:#b9cbe9; background:#fcfdff; }
+  .drow .tags { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:7px; }
+  .drow .dt { font-weight:750; font-size:15px; line-height:1.35; cursor:pointer; }
+  .drow .dt:hover { color:var(--blue); text-decoration:underline; }
+  .drow .why { color:#3f4d64; margin-top:6px; line-height:1.65; }
+  .drow .usage { margin-top:6px; color:#4d5b72; line-height:1.65; }
+  .drow .usage b,.drow .why b { color:var(--ink); }
+  .drow .items { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
+  .drow .items span { font-size:11px; color:#41618f; background:#eef4ff; border-radius:6px; padding:2px 7px; }
+  .drow .side { display:flex; flex-direction:column; gap:6px; align-items:stretch; min-width:118px; }
+  .drow .meta { color:var(--muted); font-size:11.5px; margin-top:7px; display:flex; gap:10px; flex-wrap:wrap; }
+  .steps { counter-reset:s; }
+  .step { display:grid; grid-template-columns:26px minmax(0,1fr); gap:12px; padding:11px 0; border-top:1px solid #eef1f5; }
+  .step:first-child { border-top:0; padding-top:0; }
+  .step .no { width:26px; height:26px; border-radius:50%; background:#eef4ff; color:var(--blue); display:grid; place-items:center; font-size:12px; font-weight:800; }
+  .step .sn { font-weight:730; }
+  .step .sd { color:#4d5b72; margin-top:2px; }
+  .bullets { margin:0; padding-left:20px; color:#41506a; line-height:1.8; }
+
+  /* ---------- 드로어 ---------- */
+  .overlay { position:fixed; inset:0; background:rgba(18,27,44,.34); z-index:39; opacity:0; pointer-events:none; transition:.2s; }
+  .overlay.on { opacity:1; pointer-events:auto; }
+  .drawer { position:fixed; z-index:40; right:0; top:0; bottom:0; width:min(860px,94vw); background:#fff; box-shadow:-18px 0 50px rgba(24,36,58,.18); transform:translateX(102%); transition:.25s ease; display:flex; flex-direction:column; }
+  .drawer.on { transform:none; }
+  .drawer-head { padding:24px 58px 18px 26px; border-bottom:1px solid var(--line); position:relative; }
+  .drawer-head h2 { font-size:23px; line-height:1.35; margin:9px 0 8px; letter-spacing:-.025em; }
+  .drawer-head p { margin:0; color:var(--muted); }
+  .close { position:absolute; right:18px; top:17px; width:38px; height:38px; border:0; border-radius:10px; background:#f1f3f6; font-size:24px; cursor:pointer; }
+  .drawer-actions { display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+  .detail-tabs { display:flex; flex:0 0 auto; gap:3px; padding:0 20px; border-bottom:1px solid var(--line); overflow-x:auto; overflow-y:hidden; scrollbar-width:thin; }
+  .detail-tabs::-webkit-scrollbar { height:4px; }
+  .detail-tabs::-webkit-scrollbar-thumb { background:#d3dae5; border-radius:3px; }
+  .drawer-head { flex:0 0 auto; }
+  .detail-tabs button { flex:0 0 auto; border:0; background:none; padding:14px 12px 12px; color:var(--muted); cursor:pointer; border-bottom:3px solid transparent; font-weight:700; }
+  .detail-tabs button.on { color:var(--blue); border-color:var(--blue); }
+  .drawer-body { overflow:auto; padding:22px 26px 50px; }
+  .drawer-body h3 { font-size:16px; margin:22px 0 10px; }
+  .drawer-body h3:first-child { margin-top:0; }
+  .desc { font-size:14px; line-height:1.75; white-space:pre-wrap; }
+  .kv { display:grid; grid-template-columns:155px minmax(0,1fr); margin:0; border-top:1px solid var(--line); }
+  .kv dt,.kv dd { padding:9px 10px; margin:0; border-bottom:1px solid #edf0f4; overflow-wrap:anywhere; }
+  .kv dt { color:var(--muted); background:#fafbfc; }
+  .chipline { display:flex; flex-wrap:wrap; gap:5px; }
+  .preview-wrap { overflow:auto; border:1px solid var(--line); border-radius:10px; }
+  .preview-wrap table { min-width:max-content; font-size:12px; }
+  .preview-wrap th { position:sticky; top:0; z-index:1; }
+  .preview-wrap td { max-width:320px; min-width:100px; white-space:normal; vertical-align:top; }
+  .notice { padding:12px 14px; border-radius:10px; background:#f5f7fa; color:var(--muted); margin-bottom:14px; }
+  .legacy-section table { min-width:650px; width:100%; border-collapse:collapse; font-size:13px; }
+  .legacy-section th,.legacy-section td { border:1px solid var(--line); padding:7px 9px; }
+  .legacy-section pre { white-space:pre-wrap; word-break:break-word; background:#f7f9fc; padding:12px 14px; border-radius:10px; font:13px/1.7 inherit; }
+  .legacy-section img,.legacy-section iframe,.legacy-section script { display:none!important; }
+
+  /* ---------- 모달 ---------- */
+  .modal-bg { position:fixed; inset:0; z-index:50; background:rgba(18,27,44,.42); display:none; align-items:center; justify-content:center; padding:20px; }
+  .modal-bg.on { display:flex; }
+  .modal { width:min(540px,100%); background:#fff; border-radius:17px; box-shadow:var(--shadow); overflow:hidden; }
+  .modal header { padding:20px 22px 14px; border-bottom:1px solid var(--line); }
+  .modal header h3 { margin:0 0 4px; font-size:18px; }
+  .modal header p { margin:0; color:var(--muted); font-size:13px; }
+  .modal .body { padding:20px 22px; display:grid; gap:15px; }
+  .field label { display:block; font-weight:700; font-size:13px; margin-bottom:6px; }
+  .field input,.field select { width:100%; max-width:none; }
+  .field .help { color:var(--muted); font-size:12px; margin-top:6px; line-height:1.6; }
+  .modal footer { padding:14px 22px 20px; display:flex; gap:8px; justify-content:flex-end; }
+  .toast { position:fixed; z-index:60; left:50%; bottom:88px; transform:translate(-50%,18px); opacity:0; color:#fff; background:#1f2b3d; padding:10px 16px; border-radius:10px; transition:.2s; pointer-events:none; max-width:90vw; }
+  .toast.on { opacity:1; transform:translate(-50%,0); }
+  @media (max-width:1080px) { .ai-grid{grid-template-columns:1fr}.ai-side{position:static;max-height:none} }
+  @media (max-width:900px) { .top-in{height:auto;min-height:64px;flex-wrap:wrap;padding:10px 16px}.source-tabs{order:3;width:100%;height:42px;overflow:auto}.source-tabs button{padding:0 12px}.top-status{margin-left:auto}.page{padding:20px 14px 120px}.hero{align-items:flex-start;flex-direction:column}.updated{text-align:left}.kpis{grid-template-columns:1fr 1fr}.drawer-body{padding:18px}.drawer-head{padding-left:18px}.kv{grid-template-columns:120px 1fr}.drow{grid-template-columns:1fr}.askbar{padding:10px 14px 14px} }
+</style>
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <div class="brand"><span class="mark">DATA</span><span>통합 데이터 카탈로그</span></div>
+  <nav class="source-tabs" id="sourceTabs">
+    <button class="on" data-source="all">통합 <span class="count" id="countAll">–</span></button>
+    <button data-source="aihub">AI Hub <span class="count" id="countAi">–</span></button>
+    <button data-source="public">공공데이터포털 <span class="count" id="countPublic">–</span></button>
+    <button data-source="my">내 데이터 <span class="count" id="countMy">0</span></button>
+    <button class="ai" data-source="ai">✦ AI 추천 <span class="count" id="countReco">0</span></button>
+  </nav>
+  <div class="top-status">
+    <span class="dot" id="statusDot"></span><span id="statusText">카탈로그 확인 중</span>
+    <button class="icon-btn" id="openSettings" title="AI 설정 (Gemini API 키·모델)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 5 8.9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9.5a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </div>
+</div></header>
+
+<main class="page">
+  <section class="hero">
+    <div><div class="eyebrow" id="eyebrow">All data sources</div><h1 id="pageTitle">모든 데이터를 한곳에서 찾기</h1><p id="pageDesc">AI Hub와 공공데이터포털 파일데이터를 분야별로 비교하고 상세 정보까지 확인합니다.</p></div>
+    <div class="updated" id="updated">수집 정보 불러오는 중…</div>
+  </section>
+
+  <div id="viewList">
+    <section class="kpis" id="kpis"></section>
+    <section class="filters" id="filters">
+      <div class="filter-row">
+        <label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="데이터명, 설명, 키워드, 제공기관 검색"></label>
+        <select id="format"><option value="">형식 전체</option></select>
+        <select id="preview"><option value="">미리보기 전체</option><option value="yes">미리보기 수집됨</option><option value="no">미리보기 대기</option></select>
+        <button class="btn" id="reset">초기화</button>
+      </div>
+      <div class="filter-row"><span class="flabel">분야</span><div class="chips" id="fieldChips"></div></div>
+    </section>
+    <div class="list-meta" id="listMeta"></div>
+    <section class="panel" id="panel"><div class="loading-line"></div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th style="width:42px">★</th><th>출처</th>
+          <th class="sort" data-sort="title">데이터</th>
+          <th class="sort" data-sort="field">분야</th>
+          <th class="sort" data-sort="organization">제공기관</th>
+          <th>형식</th><th>제공 방식</th>
+          <th class="sort" data-sort="modified_at">수정일</th>
+          <th class="sort r" data-sort="row_count">전체 행</th>
+          <th class="sort r" data-sort="downloads">다운로드</th>
+          <th>미리보기</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table></div>
+      <div class="empty" id="empty" hidden><b>조건에 맞는 데이터가 없습니다</b>검색어나 필터를 바꿔 보세요.</div>
+      <div class="pager" id="pager"></div>
+    </section>
+  </div>
+
+  <section id="viewAi" hidden><div class="ai-grid">
+    <aside class="ai-side">
+      <h3>✦ 저장된 추천 <span class="count" id="recoCount">0</span></h3>
+      <div class="list" id="recoList"></div>
+    </aside>
+    <div class="ai-main">
+      <div class="composer">
+        <h2>어떤 주제에 필요한 데이터가 필요하신가요?</h2>
+        <p class="hint">목적을 문장으로 적어 주세요. 수집해 둔 <b id="aiCorpus">–</b>건의 데이터 중에서 필요한 데이터와 활용 방법을 찾아 드립니다.</p>
+        <textarea id="aiInput" placeholder="예) 청소년 우울증 조기선별 모델을 만들고 싶습니다. 정신건강 상담 기록, 설문, 인구통계 데이터를 활용해 위험군을 예측하려고 합니다."></textarea>
+        <div class="composer-foot">
+          <button class="btn violet" id="aiSubmit">✦ 데이터 추천 받기</button>
+          <button class="btn" id="aiClear">지우기</button>
+          <span class="grow"></span>
+          <span class="list-meta" id="aiModelInfo"></span>
+        </div>
+        <div class="ex" id="aiExamples"></div>
+      </div>
+      <div id="aiOut"></div>
+    </div>
+  </div></section>
+</main>
+
+<div class="askbar" id="askbar"><div class="askbar-in">
+  <button id="askOpen"><span class="spark">✦</span><span>어떤 주제에 필요한 데이터가 필요하신가요?</span><span class="go">AI 추천</span></button>
+</div></div>
+
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head" id="drawerHead"></div>
+  <div class="detail-tabs" id="detailTabs"></div>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<div class="modal-bg" id="settingsModal"><div class="modal">
+  <header><h3>AI 설정</h3><p>Gemini API 키와 모델을 지정하면 AI 추천 기능을 사용할 수 있습니다.</p></header>
+  <div class="body">
+    <div class="field">
+      <label for="setKey">Gemini API 키</label>
+      <input id="setKey" type="password" placeholder="AIza..." autocomplete="off">
+      <div class="help">Google AI Studio에서 발급합니다. 키는 이 PC의 <code>data/settings.json</code>에만 저장되고 깃에는 올라가지 않습니다.</div>
+    </div>
+    <div class="field">
+      <label for="setModel">모델</label>
+      <select id="setModel"><option value="">불러오는 중…</option></select>
+      <div class="help" id="modelHelp">키를 저장하면 계정에서 사용 가능한 모델 목록을 불러옵니다. Flash 계열이 빠르고 저렴합니다.</div>
+    </div>
+  </div>
+  <footer><button class="btn" id="setCancel">닫기</button><button class="btn" id="setReload">모델 새로고침</button><button class="btn primary" id="setSave">저장</button></footer>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(async function(){
+  const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fmt=n=>Number(n||0).toLocaleString('ko-KR');
+  const fmtDate=v=>v||'–';
+  const fmtBytes=b=>{if(!b)return '';const u=['B','KB','MB','GB','TB','PB'];let i=0,v=b;while(v>=1024&&i<u.length-1){v/=1024;i++}return (v>=100?v.toFixed(0):v>=10?v.toFixed(1):v.toFixed(2))+' '+u[i]};
+  const labels={department:'관리부서명',contact:'관리부서 전화번호',basis:'보유근거',collection_method:'수집방법',update_cycle:'업데이트 주기',next_update:'차기 등록 예정일',media_type:'매체유형',row_count:'전체 행',extension:'확장자',limitations:'데이터 한계',delivery:'제공형태',notes:'기타 유의사항',spatial:'공간범위',temporal:'시간범위',paid:'비용부과유무',charge_basis:'비용부과기준 및 단위',license:'이용허락범위',created_at:'등록일',modified_at:'수정일',national_core:'국가중점여부',standardized:'표준데이터여부',classification:'분류체계',organization_code:'제공기관코드',file_name:'파일데이터명',api_type:'API 유형',traffic:'일 트래픽',review_type:'심의유형'};
+  const AIHUB_SECTIONS={content:'개요 원문',meta:'메타데이터 구조표',stats:'데이터 통계',annotation:'어노테이션 / 데이터 구조',prcuseAi:'활용 AI 모델',prfomnc:'데이터 성능',autool:'저작도구',cnstcEntrps:'구축 업체'};
+  const EXAMPLES=['우울증 조기선별 모델에 필요한 데이터','노인 낙상 예방 서비스를 만들고 싶어요','전기차 충전소 입지 분석용 데이터','한국어 음성인식 학습 데이터','수요예측 기반 재고관리 데이터','산불 위험 예측에 쓸 기상·산림 데이터'];
+  const state={source:'all',q:'',fields:[],format:'',preview:'',page:1,per:+localStorage.getItem('catalog_per')||50,sort:'modified_at',dir:'desc'};
+  let stats={total:0,sources:[],meta:{}}, facets={fields:[],formats:[]}, current=[], total=0;
+  let detail=null, detailTab='overview', loadToken=0;
+  let MY={updated_at:null,items:{}}, saveTimer, toastTimer;
+  let RECOS=[], activeReco=null, aiBusy=false, settings={has_key:false,model:''};
+
+  function notify(text){const el=$('#toast');el.textContent=text;el.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('on'),2200)}
+  async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m)}return r.json()}
+  async function post(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});let d={};try{d=await r.json()}catch(e){}if(!r.ok)throw new Error(d.error||r.statusText);return d}
+  function srcCount(name){return stats.sources.find(x=>x.source===name)?.count||0}
+  function sourceParam(){return state.source==='aihub'?'aihub':state.source==='public'?'public':''}
+  function params(){const p=new URLSearchParams();const s=sourceParam();if(s)p.set('source',s);if(state.q)p.set('q',state.q);state.fields.forEach(f=>p.append('field',f));if(state.format)p.set('format',state.format);if(state.preview)p.set('preview',state.preview);p.set('page',state.page);p.set('per',state.per);p.set('sort',state.sort);p.set('dir',state.dir);return p}
+  function badgeSource(source){return `<span class="badge ${source==='AI Hub'?'ai':'public'}">${esc(source)}</span>`}
+  function accessBadge(a,withNote){if(!a)return '–';const icon={download:'↓',lock:'🔒',wait:'↗',muted:'·'}[a.tone]||'·';return `<span class="badge ${esc(a.tone||'muted')}">${icon} ${esc(a.type)}</span>${withNote&&a.note?`<span class="acc-note">${esc(a.note)}</span>`:''}`}
+  function previewBadge(d){if(d.source==='AI Hub')return '<span class="badge ai">상세 제공</span>';if(d.preview_status==='ok')return '<span class="badge preview">수집됨</span>';if(d.preview_status==='none')return '<span class="badge field">없음</span>';return '<span class="badge wait">수집 대기</span>'}
+  function formatBadges(values){return (values||[]).slice(0,4).map(x=>`<span class="badge format">${esc(x)}</span>`).join('')||'–'}
+  function picked(uid){return !!MY.items[uid]}
+  function myItem(d){return {uid:d.uid,source:d.source,source_id:d.source_id,title:d.title,field:d.field,organization:d.organization||'',formats:d.formats||[],description:d.description||'',modified_at:d.modified_at||'',row_count:d.row_count||0,downloads:d.downloads||0,url:d.url||'',access:d.access||null,added_at:new Date().toISOString().slice(0,10),memo:''}}
+  function togglePick(d){if(picked(d.uid)){delete MY.items[d.uid];notify('내 데이터에서 제거했습니다')}else{MY.items[d.uid]=myItem(d);notify('내 데이터에 담았습니다')}saveMy();renderRows();updateCounts();if(detail&&detail.uid===d.uid)renderDrawerHead();if(activeReco)renderReco()}
+  function updateCounts(){$('#countAll').textContent=fmt(stats.total);$('#countAi').textContent=fmt(srcCount('AI Hub'));$('#countPublic').textContent=fmt(srcCount('공공데이터포털'));$('#countMy').textContent=fmt(Object.keys(MY.items).length);$('#countReco').textContent=fmt(RECOS.length);$('#recoCount').textContent=fmt(RECOS.length)}
+  async function loadMy(){try{MY=await api('/api/my')}catch(e){try{MY=JSON.parse(localStorage.getItem('catalog_my')||'{"items":{}}')}catch(_){}}
+    if(!MY.items)MY.items={};let changed=false;Object.entries({...MY.items}).forEach(([key,v])=>{if(!key.includes(':')){const uid='aihub:'+(v.sn||key);MY.items[uid]={...v,uid,source:'AI Hub',source_id:v.sn||key};delete MY.items[key];changed=true}});if(changed)saveMy();updateCounts()}
+  function saveMy(){localStorage.setItem('catalog_my',JSON.stringify(MY));clearTimeout(saveTimer);saveTimer=setTimeout(async()=>{try{await post('/api/my',MY)}catch(e){}},250)}
+
+  // ------------------------------------------------------------------ 목록
+  async function loadStats(){stats=await api('/api/catalog/stats');updateCounts();$('#statusDot').classList.toggle('ok',stats.database);$('#statusText').textContent=stats.database?'로컬 카탈로그 연결됨':'카탈로그 없음';const m=stats.meta||{};const stamp=m.public_list_crawled_at||m.aihub_crawled_at||'';$('#updated').innerHTML=`최근 목록 수집 <b>${esc(stamp||'–')}</b><br>공공데이터 미리보기 ${fmt(stats.sources.find(x=>x.source==='공공데이터포털')?.previews||0)}건 저장`;$('#aiCorpus').textContent=fmt(stats.total);renderKpis()}
+  function renderKpis(){const pub=stats.sources.find(x=>x.source==='공공데이터포털')||{},ai=stats.sources.find(x=>x.source==='AI Hub')||{},acc=stats.aihub_access||{};const vals=state.source==='public'?
+    [['파일데이터',pub.count,'현재 공개 목록'],['상세정보',pub.details,'기본·제공정보'],['미리보기',pub.previews,'수집 완료/없음'],['내 데이터',Object.keys(MY.items).length,'직접 담은 항목']]:state.source==='aihub'?
+    [['AI 데이터셋',ai.count,'AI Hub 수집 목록'],['↓ 다운로드 가능',acc['다운로드'],'신청 후 내려받기'],['🔒 안심존',acc['안심존'],'열람만 가능'],['내 데이터',Object.keys(MY.items).length,'직접 담은 항목']]:
+    [['통합 데이터',stats.total,'두 출처 합계'],['공공데이터',pub.count,'파일데이터'],['AI Hub',ai.count,'AI 학습데이터'],['내 데이터',Object.keys(MY.items).length,'직접 담은 항목']];
+    $('#kpis').innerHTML=vals.map(x=>`<article class="kpi"><div class="label">${x[0]}</div><div class="num">${typeof x[1]==='number'?fmt(x[1]):(x[1]??'–')}</div><div class="sub">${x[2]}</div></article>`).join('')}
+  async function loadFacets(){if(state.source==='my'||state.source==='ai')return;const s=sourceParam();facets=await api('/api/catalog/facets'+(s?'?source='+s:''));renderFieldChips();const f=$('#format');f.innerHTML='<option value="">형식 전체</option>'+facets.formats.map(x=>`<option value="${esc(x.value)}" ${x.value===state.format?'selected':''}>${esc(x.value)} (${fmt(x.count)})</option>`).join('')}
+  function renderFieldChips(){const el=$('#fieldChips');el.innerHTML=`<button class="chip ${state.fields.length?'':'on'}" data-field="">전체 <span class="c">${fmt(facets.fields.reduce((a,b)=>a+b.count,0))}</span></button>`+
+    facets.fields.map(x=>{const on=state.fields.includes(x.value);return `<button class="chip ${on?'on':''}" data-field="${esc(x.value)}"><span class="box">${on?'✓':''}</span>${esc(x.value)} <span class="c">${fmt(x.count)}</span></button>`}).join('')}
+  function updateHero(){const map={all:['All data sources','모든 데이터를 한곳에서 찾기','AI Hub와 공공데이터포털 파일데이터를 분야별로 비교하고 상세 정보까지 확인합니다.'],aihub:['AI Hub','AI 학습데이터','AI Hub 데이터셋의 제공 방식(다운로드·안심존)과 메타데이터 구조, 구축 정보를 확인합니다.'],public:['Data.go.kr','공공데이터포털 파일데이터','분야·기관·파일 형식별로 찾고 기본정보와 데이터 미리보기를 확인합니다.'],my:['My collection','내 데이터','관심 있는 두 출처의 데이터를 한곳에 모아 관리합니다.'],ai:['AI recommendation','AI 데이터 추천','목적을 설명하면 수집된 카탈로그에서 필요한 데이터와 활용 방법을 찾아 드립니다.']};const v=map[state.source];
+    $('#eyebrow').textContent=v[0];$('#pageTitle').textContent=v[1];$('#pageDesc').textContent=v[2];
+    const ai=state.source==='ai';$('#viewAi').hidden=!ai;$('#viewList').hidden=ai;$('#askbar').style.display=ai?'none':'';
+    $('#filters').style.display=state.source==='my'?'none':'';if(!ai)renderKpis()}
+  async function loadList(){const token=++loadToken;$('#panel').classList.add('loading');try{
+      if(state.source==='my'){current=Object.values(MY.items);const terms=state.q.toLowerCase().split(/\s+/).filter(Boolean);current=current.filter(d=>terms.every(t=>JSON.stringify(d).toLowerCase().includes(t)));total=current.length;renderRows();renderPager();return}
+      const data=await api('/api/catalog/list?'+params());if(token!==loadToken)return;current=data.items;total=data.total;renderRows();renderPager()}
+    catch(e){$('#rows').innerHTML=`<tr><td colspan="11"><div class="empty"><b>목록을 불러오지 못했습니다</b>${esc(e.message)}</div></td></tr>`}
+    finally{if(token===loadToken)$('#panel').classList.remove('loading')}}
+  function renderRows(){$('#rows').innerHTML=current.map(d=>`<tr class="clickable" data-uid="${esc(d.uid)}">
+      <td><button class="star ${picked(d.uid)?'on':''}" data-pick="${esc(d.uid)}" title="내 데이터에 담기">${picked(d.uid)?'★':'☆'}</button></td>
+      <td>${badgeSource(d.source)}</td>
+      <td><div class="dataset-title">${esc(d.title)}</div><div class="summary">${esc(d.description||d.file_name||'')}</div></td>
+      <td><span class="badge field">${esc(d.field||'미분류')}</span>${d.subfield?`<div class="summary">${esc(d.subfield)}</div>`:''}</td>
+      <td class="org">${esc(d.organization||'–')}</td>
+      <td>${formatBadges(d.formats)}</td>
+      <td>${accessBadge(d.access,true)}${d.source==='AI Hub'&&d.size_bytes?`<span class="acc-note">${esc(fmtBytes(d.size_bytes))}</span>`:''}</td>
+      <td>${esc(fmtDate(d.modified_at))}</td>
+      <td class="r">${d.row_count?fmt(d.row_count):'–'}</td>
+      <td class="r">${d.downloads?fmt(d.downloads):'–'}</td>
+      <td>${previewBadge(d)}</td></tr>`).join('');
+    $('#empty').hidden=current.length>0;
+    const chosen=state.fields.length?` · 분야 ${state.fields.length}개 선택`:'';
+    $('#listMeta').innerHTML=`<span>검색 결과 <b>${fmt(total)}</b>건${chosen}</span><span>페이지 <b>${fmt(state.page)}</b></span><span class="grow"></span><span>행을 누르면 상세정보가 열립니다</span>`}
+  function renderPager(){const pages=Math.max(1,Math.ceil(total/state.per)),p=Math.min(state.page,pages);if(p!==state.page)state.page=p;const nums=[...new Set([1,p-2,p-1,p,p+1,p+2,pages].filter(x=>x>=1&&x<=pages))].sort((a,b)=>a-b);let prev=0,html=`<span class="info">${fmt(total)}건 중 ${fmt(total?(p-1)*state.per+1:0)}–${fmt(Math.min(p*state.per,total))}</span><button data-page="${p-1}" ${p===1?'disabled':''}>‹</button>`;for(const n of nums){if(prev&&n>prev+1)html+='<span>…</span>';html+=`<button data-page="${n}" class="${n===p?'on':''}">${n}</button>`;prev=n}html+=`<button data-page="${p+1}" ${p===pages?'disabled':''}>›</button><select id="perPage">${[25,50,100,200].map(n=>`<option value="${n}" ${n===state.per?'selected':''}>${n}개씩</option>`).join('')}</select>`;$('#pager').innerHTML=html}
+
+  // ------------------------------------------------------------------ 상세 드로어
+  async function openDetail(uid){$('#overlay').classList.add('on');$('#drawer').classList.add('on');$('#drawer').setAttribute('aria-hidden','false');$('#drawerHead').innerHTML='<div class="notice">상세정보를 불러오는 중…</div>';$('#drawerBody').innerHTML='';$('#detailTabs').innerHTML='';history.replaceState(null,'','?uid='+encodeURIComponent(uid));
+    try{detail=await api('/api/catalog/detail?uid='+encodeURIComponent(uid));detailTab='overview';renderDrawer()}catch(e){$('#drawerBody').innerHTML=`<div class="notice">${esc(e.message)}</div>`}}
+  function closeDrawer(){detail=null;$('#overlay').classList.remove('on');$('#drawer').classList.remove('on');$('#drawer').setAttribute('aria-hidden','true');history.replaceState(null,'',location.pathname)}
+  function renderDrawerHead(){const d=detail;if(!d)return;
+    $('#drawerHead').innerHTML=`<button class="close" id="drawerClose" aria-label="닫기">×</button>${badgeSource(d.source)} <span class="badge field">${esc(d.field||'미분류')}</span> ${accessBadge(d.access)}
+      <h2>${esc(d.title)}</h2><p>${esc(d.organization||'')}${d.access&&d.access.note?' · '+esc(d.access.note):''}</p>
+      <div class="drawer-actions"><a class="btn primary" href="${esc(d.url)}" target="_blank" rel="noopener">원문 열기 ↗</a><button class="btn" id="drawerPick">${picked(d.uid)?'★ 내 데이터에서 제거':'☆ 내 데이터에 담기'}</button></div>`;
+    $('#drawerClose').onclick=closeDrawer;$('#drawerPick').onclick=()=>togglePick(d)}
+  function tabsFor(d){
+    if(d.source==='AI Hub'){const s=(d.detail&&d.detail.sections)||{};const t=[['overview','개요']];Object.entries(AIHUB_SECTIONS).forEach(([k,l])=>{if(k!=='content'&&s[k]&&s[k].length>20)t.push(['sec:'+k,l])});t.push(['history','변경 이력']);return t}
+    const t=[['overview','개요'],['detail','파일데이터 정보'],['columns','데이터 항목']];
+    t.push(['preview','미리보기']);return t}
+  function renderDrawer(){renderDrawerHead();const tabs=tabsFor(detail);if(!tabs.some(t=>t[0]===detailTab))detailTab=tabs[0][0];
+    $('#detailTabs').innerHTML=tabs.map(t=>`<button data-dtab="${esc(t[0])}" class="${detailTab===t[0]?'on':''}">${esc(t[1])}</button>`).join('');renderDrawerBody()}
+  function kv(entries){const rows=entries.filter(x=>x[1]!==''&&x[1]!=null&&!(Array.isArray(x[1])&&!x[1].length));return rows.length?`<dl class="kv">${rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${Array.isArray(v)?esc(v.join(', ')):esc(v)}</dd>`).join('')}</dl>`:''}
+  function dataTable(data){return `<table><thead><tr>${(data.headers||[]).map(x=>`<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>${(data.rows||[]).map(r=>`<tr>${r.map(x=>`<td>${esc(x)}</td>`).join('')}</tr>`).join('')}</tbody></table>`}
+  function histTable(head,rows){return rows&&rows.length?`<table class="legacy-section-t" style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>${head.map(h=>`<th style="border:1px solid #dde3ec;background:#fafbfc;padding:7px 9px;text-align:left">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td style="border:1px solid #dde3ec;padding:7px 9px">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`:''}
+  function renderDrawerBody(){const d=detail,det=d.detail||{},pre=d.preview||{},a=d.aihub||{};let html='';
+    if(detailTab==='overview'){
+      if(d.source==='AI Hub'){
+        html=`<h3>소개</h3><div class="desc">${esc(a.intro||d.description||'설명이 없습니다.')}</div>`;
+        if(a.purpose)html+=`<h3>구축목적</h3><div class="desc">${esc(a.purpose)}</div>`;
+        html+=`<h3>제공 정보</h3>${kv([['제공 방식',(d.access?d.access.type:'')+(d.access&&d.access.note?' ('+d.access.note+')':'')],['용량',a.size_bytes?fmtBytes(a.size_bytes):''],['파일 수',a.s3_file_cnt?fmt(a.s3_file_cnt)+'개':''],['샘플 데이터',a.has_sample?'제공':''],['오프라인 이용',a.offline_available?'가능':''],['데이터 설명서',a.has_manual?'제공':''],['구축활용가이드',a.has_guide?'제공':''],['안내',a.notice||'']])}`;
+        html+=`<h3>기본 정보</h3>${kv([['분야',d.field],['유형',(a.types||d.formats||[]).join(', ')],['생성 방식',a.gen_method],['구축년도',a.build_year],['갱신년월',a.update_ym||d.modified_at],['구축량',a.build_amount],['데이터 형식',a.data_format],['라벨링 유형',a.label_type],['라벨링 형식',a.label_format],['데이터 출처',a.data_source],['활용 서비스',a.use_service],['조회수',d.views?fmt(d.views):''],['다운로드',d.downloads?fmt(d.downloads):'']])}`;
+        html+=`<h3>구축 업체</h3>${kv([['수행기관(주관)',a.builder_main],['수행기관(참여)',(a.builder_sub||[]).join(', ')]])||'<div class="notice">정보 없음</div>'}`;
+        const perf=det.ai_perf||[];if(perf.length>1)html+=`<h3>AI 모델 성능</h3>${histTable(perf[0],perf.slice(1))}`;
+        html+=`<h3>키워드</h3><div class="chipline">${(d.keywords||[]).map(x=>`<span class="badge field">${esc(x)}</span>`).join('')||'–'}</div>`;
+      }else{
+        html=`<h3>설명</h3><div class="desc">${esc(d.description||det.description||'설명이 없습니다.')}</div>
+          <h3>핵심 정보</h3>${kv([['출처',d.source],['분야',[d.field,d.subfield].filter(Boolean).join(' · ')],['제공기관',d.organization],['관리부서',det.department],['제공 방식',(d.access?d.access.type:'')+(d.access&&d.access.note?' ('+d.access.note+')':'')],['제공형태',det.delivery],['파일 형식',(d.formats||[]).join(', ')],['확장자',det.extension],['전체 행',d.row_count?fmt(d.row_count):''],['업데이트 주기',d.update_cycle||det.update_cycle],['차기 등록 예정일',d.next_update||det.next_update],['등록일',d.created_at||det.created_at],['수정일',d.modified_at],['비용',det.paid],['이용허락범위',det.license],['조회수',d.views?fmt(d.views):''],['다운로드',d.downloads?fmt(d.downloads):'']])}
+          <h3>키워드</h3><div class="chipline">${(d.keywords||[]).map(x=>`<span class="badge field">${esc(x)}</span>`).join('')||'–'}</div>`;
+      }}
+    else if(detailTab==='detail'){const skip=new Set(['source_id','record_type','title','description','keywords','downloads','views','url','columns','sections']);const pairs=[];for(const [k,v] of Object.entries(det)){if(skip.has(k)||typeof v==='object')continue;pairs.push([labels[k]||k,v])}
+      html=`<h3>기본 및 제공정보</h3>${kv(pairs)||'<div class="notice">상세 기본정보가 아직 수집되지 않았습니다.</div>'}`}
+    else if(detailTab==='columns'){const c=det.columns?.headers?.length?det.columns:{headers:pre.headers||[],rows:[]};
+      if(!c.headers?.length)html='<div class="notice">미리보기가 수집되면 데이터 항목(컬럼)이 이곳에 표시됩니다.</div>';
+      else if(c.rows?.length)html=`<h3>데이터 항목 ${fmt(c.headers.length)}개</h3><div class="preview-wrap">${dataTable(c)}</div>`;
+      else html=`<h3>데이터 항목 ${fmt(c.headers.length)}개</h3><div class="chipline">${c.headers.map(x=>`<span class="badge format">${esc(x)}</span>`).join('')}</div>`}
+    else if(detailTab==='preview'){if(pre.headers?.length)html=`${pre.note?`<div class="notice">${esc(pre.note)}</div>`:''}<div class="preview-wrap">${dataTable(pre)}</div>`;
+      else html=`<div class="notice">미리보기 상태: ${esc(d.preview_status)}${d.error?'<br>'+esc(d.error):''}<br>전체 수집기는 중단된 지점부터 자동으로 이어집니다.</div>`}
+    else if(detailTab==='history'){const v=det.version_history||[],h=det.data_history||[];
+      html=(v.length?`<h3>데이터 변경이력</h3>${histTable(['버전','일자','변경내용','비고'],v)}`:'')+(h.length?`<h3>데이터 히스토리</h3>${histTable(['일자','변경내용','비고'],h)}`:'');
+      if(!html)html='<div class="notice">변경 이력이 없습니다.</div>'}
+    else if(detailTab.startsWith('sec:')){const key=detailTab.slice(4);const body=((det.sections||{})[key])||'';
+      html=body?`<section class="legacy-section">${body}</section>`:'<div class="notice">내용이 없습니다.</div>'}
+    $('#drawerBody').innerHTML=html;$('#drawerBody').scrollTop=0}
+
+  // ------------------------------------------------------------------ AI 추천
+  function roleTone(role){return role==='핵심'?'download':role==='보조'?'public':'muted'}
+  async function loadRecos(open){try{const d=await api('/api/recommendations');RECOS=d.items||[]}catch(e){RECOS=[]}
+    if(open&&!activeReco&&RECOS.length){activeReco=RECOS[0]}
+    updateCounts();renderRecoList();if(open&&activeReco)renderReco()}
+  function renderRecoList(){const el=$('#recoList');if(!RECOS.length){el.innerHTML='<div class="empty" style="padding:26px 16px">저장된 추천이 없습니다.<br>목적을 입력하면 자동 저장됩니다.</div>';return}
+    el.innerHTML=RECOS.map(r=>`<div class="reco-item ${activeReco&&activeReco.id===r.id?'on':''}" data-reco="${esc(r.id)}"><button class="del" data-del="${esc(r.id)}" title="삭제">×</button><div class="t">${esc(r.title||r.query)}</div><div class="m"><span>${esc((r.created_at||'').slice(0,16))}</span><span>데이터 ${fmt((r.datasets||[]).length)}건</span></div></div>`).join('')}
+  function renderReco(){const r=activeReco;if(!r){$('#aiOut').innerHTML='';return}
+    const groups=[['핵심','핵심 데이터'],['보조','보조 데이터'],['참고','참고 데이터']];
+    const ds=r.datasets||[];
+    const dsHtml=groups.map(([role,label])=>{const rows=ds.filter(x=>(x.role||'참고')===role);if(!rows.length)return '';
+      return `<div class="group-head"><span class="badge ${roleTone(role)}">${esc(label)}</span><span class="n">${rows.length}건</span></div>`+rows.map(x=>`
+        <div class="drow">
+          <div>
+            <div class="tags">${badgeSource(x.source)}<span class="badge field">${esc(x.field||'미분류')}</span>${accessBadge(x.access)}${(x.formats||[]).slice(0,3).map(f=>`<span class="badge format">${esc(f)}</span>`).join('')}</div>
+            <div class="dt" data-open="${esc(x.uid)}">${esc(x.title)}</div>
+            <div class="why"><b>왜 필요한가</b> · ${esc(x.why||'')}</div>
+            ${x.usage?`<div class="usage"><b>활용 방법</b> · ${esc(x.usage)}</div>`:''}
+            ${(x.items||[]).length?`<div class="items">${x.items.map(i=>`<span>${esc(i)}</span>`).join('')}</div>`:''}
+            <div class="meta"><span>${esc(x.organization||'')}</span>${x.row_count?`<span>전체 행 ${fmt(x.row_count)}</span>`:''}${x.modified_at?`<span>수정 ${esc(x.modified_at)}</span>`:''}${x.access&&x.access.size_bytes?`<span>${esc(fmtBytes(x.access.size_bytes))}</span>`:''}${x.access&&x.access.note?`<span>${esc(x.access.note)}</span>`:''}</div>
+            <div class="meta"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.url)}</a></div>
+          </div>
+          <div class="side">
+            <a class="btn sm primary" href="${esc(x.url)}" target="_blank" rel="noopener">원문 ↗</a>
+            <button class="btn sm" data-open="${esc(x.uid)}">상세</button>
+            <button class="btn sm" data-pick="${esc(x.uid)}">${picked(x.uid)?'★ 담김':'☆ 담기'}</button>
+          </div>
+        </div>`).join('')}).join('');
+    $('#aiOut').innerHTML=`
+      <div class="rc result-head">
+        <div class="tags" style="display:flex;gap:6px;flex-wrap:wrap"><span class="badge ai">✦ AI 추천</span><span class="badge muted">${esc(r.model||'')}</span>${(r.fields||[]).map(f=>`<span class="badge field">${esc(f)}</span>`).join('')}</div>
+        <h2>${esc(r.title||r.query)}</h2>
+        <div class="goal">${esc(r.goal||'')}</div>
+        <div class="result-meta"><span>질문: ${esc(r.query)}</span></div>
+        <div class="result-meta"><span>후보 ${fmt(r.candidate_count||0)}건 검토</span><span>추천 ${fmt(ds.length)}건</span><span>검색어 ${esc((r.keywords||[]).join(', '))}</span><span>${esc(r.created_at||'')}</span>${r.elapsed?`<span>${r.elapsed}초</span>`:''}</div>
+      </div>
+      ${(r.features||[]).length?`<div class="rc"><h3>필요한 기능 <span class="n">${r.features.length}개</span></h3>${r.features.map((f,i)=>`<div class="feature"><div class="no">${i+1}</div><div><div class="fn">${esc(f.name)}</div><div class="fd">${esc(f.detail||'')}</div>${f.data_need?`<div class="need"><b>필요 데이터</b> · ${esc(f.data_need)}</div>`:''}</div></div>`).join('')}</div>`:''}
+      <div class="rc"><h3>추천 데이터 <span class="n">${fmt(ds.length)}건</span></h3>${dsHtml||'<div class="notice">조건에 맞는 데이터를 찾지 못했습니다.</div>'}</div>
+      ${(r.pipeline||[]).length?`<div class="rc"><h3>활용 흐름</h3><div class="steps">${r.pipeline.map((p,i)=>`<div class="step"><div class="no">${i+1}</div><div><div class="sn">${esc(p.step)}</div><div class="sd">${esc(p.detail||'')}</div></div></div>`).join('')}</div></div>`:''}
+      ${(r.cautions||[]).length?`<div class="rc"><h3>유의사항</h3><ul class="bullets">${r.cautions.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`:''}
+      ${(r.missing||[]).length?`<div class="rc"><h3>추가로 확보하면 좋은 데이터</h3><ul class="bullets">${r.missing.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`:''}`;
+    renderRecoList()}
+  async function runRecommend(){if(aiBusy)return;const q=$('#aiInput').value.trim();
+    if(q.length<3){notify('필요한 데이터를 조금 더 자세히 적어 주세요');return}
+    if(!settings.has_key){notify('먼저 오른쪽 위 설정에서 Gemini API 키를 입력해 주세요');openSettings();return}
+    aiBusy=true;$('#aiSubmit').disabled=true;activeReco=null;
+    $('#aiOut').innerHTML=`<div class="ai-status"><span class="spin"></span><span>카탈로그 ${fmt(stats.total)}건에서 후보를 찾고 ${esc(settings.model)} 모델로 추천을 만드는 중입니다… (10~60초)</span></div>`;
+    try{const r=await post('/api/ai/recommend',{query:q});activeReco=r;RECOS=[r,...RECOS.filter(x=>x.id!==r.id)];updateCounts();renderReco();notify('추천을 저장했습니다')}
+    catch(e){$('#aiOut').innerHTML=`<div class="err"><b>추천을 만들지 못했습니다</b><br>${esc(e.message)}</div>`}
+    finally{aiBusy=false;$('#aiSubmit').disabled=false}}
+
+  // ------------------------------------------------------------------ 설정
+  async function loadSettings(){try{settings=await api('/api/settings')}catch(e){settings={has_key:false,model:''}}
+    $('#aiModelInfo').innerHTML=settings.has_key?`<span>모델 <b>${esc(settings.model)}</b></span>`:`<span>Gemini API 키 미설정 · 오른쪽 위 ⚙ 설정에서 등록</span>`}
+  function openSettings(){$('#settingsModal').classList.add('on');$('#setKey').value='';$('#setKey').placeholder=settings.has_key?settings.key_hint+' (변경할 때만 입력)':'AIza...';loadModels()}
+  async function loadModels(){const sel=$('#setModel');sel.innerHTML='<option value="">불러오는 중…</option>';
+    try{const d=await api('/api/ai/models');sel.innerHTML=d.models.map(m=>`<option value="${esc(m.id)}" ${m.id===(settings.model||d.current)?'selected':''}>${esc(m.label)}${m.label===m.id?'':' — '+esc(m.id)}</option>`).join('');
+      $('#modelHelp').textContent=d.error?d.error:'계정에서 사용 가능한 모델입니다. Flash 계열이 빠르고 저렴합니다.'}
+    catch(e){sel.innerHTML='<option value="">모델을 불러오지 못했습니다</option>';$('#modelHelp').textContent=e.message}}
+
+  // ------------------------------------------------------------------ 이벤트
+  async function changeSource(source){state.source=source;state.page=1;state.fields=[];state.format=state.preview='';$('#format').value='';$('#preview').value='';
+    $$('#sourceTabs button').forEach(b=>b.classList.toggle('on',b.dataset.source===source));updateHero();
+    if(source==='ai'){await loadRecos(true);return}
+    await loadFacets();await loadList()}
+  let searchTimer;$('#q').oninput=e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{state.q=e.target.value;state.page=1;loadList()},220)};
+  ['format','preview'].forEach(id=>$('#'+id).onchange=e=>{state[id]=e.target.value;state.page=1;loadList()});
+  $('#fieldChips').onclick=e=>{const b=e.target.closest('[data-field]');if(!b)return;const v=b.dataset.field;
+    if(!v)state.fields=[];else{const i=state.fields.indexOf(v);i<0?state.fields.push(v):state.fields.splice(i,1)}
+    state.page=1;renderFieldChips();loadList()};
+  $('#reset').onclick=()=>{state.q=state.format=state.preview='';state.fields=[];$('#q').value='';$('#format').value='';$('#preview').value='';state.page=1;renderFieldChips();loadList()};
+  $('#sourceTabs').onclick=e=>{const b=e.target.closest('button[data-source]');if(b)changeSource(b.dataset.source)};
+  $('#panel').onclick=e=>{const star=e.target.closest('[data-pick]');if(star){e.stopPropagation();const d=current.find(x=>x.uid===star.dataset.pick);if(d)togglePick(d);return}const tr=e.target.closest('tr[data-uid]');if(tr)openDetail(tr.dataset.uid)};
+  $('#panel').querySelector('thead').onclick=e=>{const th=e.target.closest('[data-sort]');if(!th)return;const k=th.dataset.sort;if(state.sort===k)state.dir=state.dir==='asc'?'desc':'asc';else{state.sort=k;state.dir=['modified_at','row_count','downloads','views'].includes(k)?'desc':'asc'}state.page=1;loadList()};
+  $('#pager').onclick=e=>{const b=e.target.closest('[data-page]');if(b&&!b.disabled){state.page=+b.dataset.page;loadList();$('#panel').scrollIntoView({behavior:'smooth',block:'start'})}};
+  $('#pager').onchange=e=>{if(e.target.id==='perPage'){state.per=+e.target.value;localStorage.setItem('catalog_per',state.per);state.page=1;loadList()}};
+  $('#overlay').onclick=closeDrawer;
+  $('#detailTabs').onclick=e=>{const b=e.target.closest('[data-dtab]');if(b){detailTab=b.dataset.dtab;renderDrawer()}};
+  document.onkeydown=e=>{if(e.key==='Escape'){if($('#settingsModal').classList.contains('on'))$('#settingsModal').classList.remove('on');else closeDrawer()}};
+  $('#askOpen').onclick=()=>{changeSource('ai');setTimeout(()=>$('#aiInput').focus(),80)};
+  $('#aiSubmit').onclick=runRecommend;
+  $('#aiClear').onclick=()=>{$('#aiInput').value='';activeReco=null;renderReco();$('#aiInput').focus()};
+  $('#aiInput').onkeydown=e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter')runRecommend()};
+  $('#aiExamples').innerHTML=EXAMPLES.map(x=>`<button data-ex="${esc(x)}">${esc(x)}</button>`).join('');
+  $('#aiExamples').onclick=e=>{const b=e.target.closest('[data-ex]');if(b){$('#aiInput').value=b.dataset.ex;$('#aiInput').focus()}};
+  $('#recoList').onclick=async e=>{const del=e.target.closest('[data-del]');
+    if(del){e.stopPropagation();const id=del.dataset.del;try{const d=await post('/api/recommendations/delete',{id});RECOS=d.items||[];if(activeReco&&activeReco.id===id)activeReco=null;updateCounts();renderReco();renderRecoList();notify('삭제했습니다')}catch(err){notify(err.message)}return}
+    const it=e.target.closest('[data-reco]');if(it){activeReco=RECOS.find(x=>x.id===it.dataset.reco)||null;renderReco();$('#aiInput').value=activeReco?activeReco.query:'';window.scrollTo({top:0,behavior:'smooth'})}};
+  $('#aiOut').onclick=e=>{const open=e.target.closest('[data-open]');if(open){openDetail(open.dataset.open);return}
+    const pick=e.target.closest('[data-pick]');if(pick&&activeReco){const d=(activeReco.datasets||[]).find(x=>x.uid===pick.dataset.pick);if(d)togglePick(d)}};
+  $('#openSettings').onclick=openSettings;
+  $('#setCancel').onclick=()=>$('#settingsModal').classList.remove('on');
+  $('#settingsModal').onclick=e=>{if(e.target.id==='settingsModal')$('#settingsModal').classList.remove('on')};
+  $('#setReload').onclick=async()=>{const key=$('#setKey').value.trim();if(key)await post('/api/settings',{api_key:key});await loadSettings();loadModels()};
+  $('#setSave').onclick=async()=>{const body={model:$('#setModel').value};const key=$('#setKey').value.trim();if(key)body.api_key=key;
+    try{settings=await post('/api/settings',body);await loadSettings();$('#settingsModal').classList.remove('on');notify('설정을 저장했습니다')}catch(e){notify(e.message)}};
+
+  // ------------------------------------------------------------------ 시작
+  try{
+    await loadMy();await loadSettings();await loadStats();await loadFacets();await loadList();loadRecos();
+    const qs=new URLSearchParams(location.search);
+    const rid=qs.get('reco');
+    if(rid){await loadRecos();activeReco=RECOS.find(x=>x.id===rid)||null;await changeSource('ai');if(activeReco)renderReco()}
+    else if(qs.get('view')==='ai')await changeSource('ai');
+    const uid=qs.get('uid');if(uid)openDetail(uid);
+  }catch(e){$('#statusText').textContent='카탈로그 연결 실패';
+    $('#rows').innerHTML=`<tr><td colspan="11"><div class="empty"><b>서버를 통해 열어 주세요</b>대시보드 실행.bat 또는 python serve.py를 실행해야 합니다.<br>${esc(e.message)}</div></td></tr>`}
+})();
+</script>
+</body>
+</html>

@@ -1,17 +1,114 @@
 # -*- coding: utf-8 -*-
-"""
-로컬 대시보드 서버
-  python serve.py            # http://localhost:8765 에서 index.html 제공 + 내 데이터셋(data/my_datasets.json) 읽기/저장 API
-  GET  /api/my   -> data/my_datasets.json 내용
-  POST /api/my   -> 본문(JSON)을 data/my_datasets.json 에 저장
-"""
-import os, json, sys, time, webbrowser, threading
+"""AI Hub + 공공데이터포털 통합 로컬 대시보드 서버."""
+import json
+import os
+import sys
+import threading
+import time
+import webbrowser
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+from urllib.parse import parse_qs, urlparse
+
+import ai_service
+from catalog_db import DB_PATH, connect, decode_json, import_aihub, init_db, row_summary
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 MY_PATH = os.path.join(ROOT, 'data', 'my_datasets.json')
+AIHUB_JSON = os.path.join(ROOT, 'data', 'datasets.json')
 PORT = next((int(a) for a in sys.argv[1:] if a.isdigit()), 8765)
 LOCK = threading.Lock()
+SOURCE_MAP = {'aihub': 'AI Hub', 'public': '공공데이터포털'}
+SORT_COLUMNS = {
+    'list_order': 'list_order', 'title': 'title', 'field': 'field',
+    'organization': 'organization', 'modified_at': 'modified_at',
+    'row_count': 'row_count', 'views': 'views', 'downloads': 'downloads',
+}
+LIST_COLUMNS = (
+    'uid,source,source_id,list_order,title,file_name,field,subfield,organization,'
+    'organization_type,formats_json,keywords_json,description,modified_at,created_at,next_update,'
+    'update_cycle,media_type,row_count,views,downloads,url,detail_status,preview_status,crawled_at,'
+    "json_extract(detail_json,'$.delivery') delivery,json_extract(detail_json,'$.extension') extension"
+)
+
+# AI Hub 제공방식(다운로드 / 안심존)은 data/datasets.json 에만 있으므로 메모리에 올려 쓴다.
+AIHUB_ACCESS = {}
+AIHUB_ACCESS_MTIME = 0.0
+
+
+def load_aihub_access(force=False):
+    """data/datasets.json 에서 sn별 제공방식/용량을 읽어 캐시한다."""
+    global AIHUB_ACCESS, AIHUB_ACCESS_MTIME
+    try:
+        mtime = os.path.getmtime(AIHUB_JSON)
+    except OSError:
+        return AIHUB_ACCESS
+    if not force and mtime == AIHUB_ACCESS_MTIME and AIHUB_ACCESS:
+        return AIHUB_ACCESS
+    try:
+        with open(AIHUB_JSON, encoding='utf-8') as f:
+            payload = json.load(f)
+    except Exception:
+        return AIHUB_ACCESS
+    table = {}
+    for item in payload.get('datasets', []):
+        sn = str(item.get('sn') or '')
+        if not sn:
+            continue
+        table[sn] = {
+            'status': item.get('status') or '',
+            'approval_required': bool(item.get('approval_required')),
+            'offline_available': bool(item.get('offline_available')),
+            'has_sample': bool(item.get('has_sample')),
+            'size_bytes': int(item.get('size_bytes') or 0),
+            's3_file_cnt': int(item.get('s3_file_cnt') or 0),
+        }
+    AIHUB_ACCESS, AIHUB_ACCESS_MTIME = table, mtime
+    return AIHUB_ACCESS
+
+
+def prepare_catalog():
+    # 새로 clone 한 경우 catalog.db 가 없으므로 깃에 포함된 스냅샷에서 복원한다.
+    if not os.path.exists(DB_PATH):
+        try:
+            import snapshot
+            if os.path.exists(snapshot.MANIFEST):
+                print('catalog.db 가 없어 스냅샷에서 복원합니다…', flush=True)
+                snapshot.restore()
+        except Exception as e:  # noqa
+            print('스냅샷 복원 실패: %r' % e, flush=True)
+    con = connect(DB_PATH)
+    init_db(con)
+    import_aihub(con)
+    con.close()
+    load_aihub_access(force=True)
+
+
+def one(query, key, default=''):
+    values = query.get(key)
+    return values[0] if values else default
+
+
+def many(query, key, limit=40):
+    """field=A&field=B 또는 field=A,B 모두 허용."""
+    out = []
+    for raw in query.get(key, []):
+        for piece in str(raw).split(','):
+            piece = piece.strip()
+            if piece and piece not in out:
+                out.append(piece)
+    return out[:limit]
+
+
+def attach_access(row):
+    row['access'] = ai_service.access_of(row, load_aihub_access())
+    if row.get('source') == 'AI Hub':
+        info = load_aihub_access().get(str(row.get('source_id') or '')) or {}
+        row['size_bytes'] = info.get('size_bytes', 0)
+        row['has_sample'] = info.get('has_sample', False)
+        row['offline_available'] = info.get('offline_available', False)
+    row.pop('delivery', None)
+    row.pop('extension', None)
+    return row
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -35,13 +132,23 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _body(self):
+        n = int(self.headers.get('Content-Length') or 0)
+        if not n:
+            return {}
+        return json.loads(self.rfile.read(n).decode('utf-8'))
+
     def end_headers(self):
         if self.path.endswith('.json') or self.path.endswith('.html') or self.path == '/':
             self.send_header('Cache-Control', 'no-store')
         super().end_headers()
 
+    # ------------------------------------------------------------------ GET
     def do_GET(self):
-        if self.path.split('?')[0] == '/api/my':
+        parsed = urlparse(self.path)
+        path = parsed.path
+        query = parse_qs(parsed.query)
+        if path == '/api/my':
             with LOCK:
                 if os.path.exists(MY_PATH):
                     try:
@@ -51,16 +158,220 @@ class Handler(SimpleHTTPRequestHandler):
                 else:
                     data = {'updated_at': None, 'items': {}}
             return self._json(200, data)
-        if self.path == '/':
-            self.path = '/index.html'
+        if path == '/api/catalog/stats':
+            return self.catalog_stats(query)
+        if path == '/api/catalog/list':
+            return self.catalog_list(query)
+        if path == '/api/catalog/detail':
+            return self.catalog_detail(query)
+        if path == '/api/catalog/facets':
+            return self.catalog_facets(query)
+        if path == '/api/settings':
+            return self._json(200, ai_service.public_settings())
+        if path == '/api/ai/models':
+            try:
+                return self._json(200, {'models': ai_service.list_models(),
+                                        'current': ai_service.public_settings()['model']})
+            except ai_service.AiError as e:
+                return self._json(200, {'models': ai_service.FALLBACK_MODELS, 'error': str(e),
+                                        'current': ai_service.public_settings()['model']})
+        if path == '/api/recommendations':
+            return self._json(200, ai_service.load_recos())
+        if path == '/':
+            self.path = '/catalog.html'
         return super().do_GET()
 
-    def do_POST(self):
-        if self.path.split('?')[0] != '/api/my':
-            return self._json(404, {'error': 'not found'})
-        n = int(self.headers.get('Content-Length') or 0)
+    # ------------------------------------------------------------------ 카탈로그
+    def _catalog_where(self, query, include_search=True, include_field=True):
+        where, args = ['active=1'], []
+        source = one(query, 'source')
+        if source in SOURCE_MAP:
+            where.append('source=?')
+            args.append(SOURCE_MAP[source])
+        fields = many(query, 'field')
+        if fields and include_field:
+            where.append('field IN (%s)' % ','.join('?' * len(fields)))
+            args.extend(fields)
+        organization = one(query, 'organization')
+        if organization:
+            where.append('organization=?')
+            args.append(organization)
+        formats = many(query, 'format', 12)
+        if formats:
+            where.append('EXISTS (SELECT 1 FROM item_formats f WHERE f.uid=catalog_items.uid AND f.format IN (%s))'
+                         % ','.join('?' * len(formats)))
+            args.extend([f.upper() for f in formats])
+        preview = one(query, 'preview')
+        if preview == 'yes':
+            where.append("preview_status='ok'")
+        elif preview == 'no':
+            where.append("preview_status NOT IN ('ok','not_applicable')")
+        if include_search:
+            terms = [x for x in one(query, 'q').split() if x][:8]
+            for term in terms:
+                like = '%' + term + '%'
+                where.append('(title LIKE ? OR file_name LIKE ? OR organization LIKE ? OR keywords_json LIKE ? OR description LIKE ?)')
+                args.extend([like] * 5)
+        return ' AND '.join(where), args
+
+    def catalog_stats(self, query):
+        if not os.path.exists(DB_PATH):
+            return self._json(200, {'total': 0, 'sources': [], 'meta': {}, 'database': False})
+        con = connect(DB_PATH, readonly=True)
         try:
-            data = json.loads(self.rfile.read(n).decode('utf-8'))
+            rows = con.execute(
+                "SELECT source,COUNT(*) count,"
+                "SUM(CASE WHEN detail_status IN ('bulk','ok') THEN 1 ELSE 0 END) details,"
+                "SUM(CASE WHEN preview_status IN ('ok','none','not_applicable') THEN 1 ELSE 0 END) previews "
+                "FROM catalog_items WHERE active=1 GROUP BY source ORDER BY source"
+            ).fetchall()
+            sources = [dict(r) for r in rows]
+            meta = {r['key']: r['value'] for r in con.execute('SELECT key,value FROM crawl_meta')}
+            for key, value in list(meta.items()):
+                try:
+                    meta[key] = json.loads(value)
+                except (TypeError, ValueError):
+                    pass
+            access = {'다운로드': 0, '안심존': 0}
+            for info in load_aihub_access().values():
+                if info.get('status') == '안심존':
+                    access['안심존'] += 1
+                elif info.get('status') == '데이터 있음':
+                    access['다운로드'] += 1
+            return self._json(200, {
+                'database': True,
+                'total': sum(r['count'] for r in sources),
+                'sources': sources,
+                'aihub_access': access,
+                'meta': meta,
+            })
+        finally:
+            con.close()
+
+    def catalog_list(self, query):
+        if not os.path.exists(DB_PATH):
+            return self._json(503, {'error': 'catalog database not found'})
+        try:
+            page = max(1, int(one(query, 'page', '1')))
+            per = min(200, max(10, int(one(query, 'per', '50'))))
+        except ValueError:
+            return self._json(400, {'error': 'invalid page'})
+        sort = SORT_COLUMNS.get(one(query, 'sort', 'modified_at'), 'modified_at')
+        direction = 'ASC' if one(query, 'dir', 'desc').lower() == 'asc' else 'DESC'
+        where, args = self._catalog_where(query)
+        con = connect(DB_PATH, readonly=True)
+        try:
+            total = con.execute('SELECT COUNT(*) FROM catalog_items WHERE ' + where, args).fetchone()[0]
+            select = ('SELECT ' + LIST_COLUMNS + ' FROM catalog_items WHERE ' + where +
+                      ' ORDER BY ' + sort + ' ' + direction + ', uid ASC LIMIT ? OFFSET ?')
+            rows = [attach_access(row_summary(r)) for r in con.execute(select, args + [per, (page - 1) * per])]
+            return self._json(200, {'total': total, 'page': page, 'per': per, 'items': rows})
+        finally:
+            con.close()
+
+    def catalog_detail(self, query):
+        uid = one(query, 'uid')
+        if not uid or ':' not in uid:
+            return self._json(400, {'error': 'uid required'})
+        con = connect(DB_PATH, readonly=True)
+        try:
+            row = con.execute('SELECT * FROM catalog_items WHERE uid=? AND active=1', (uid,)).fetchone()
+            if row is None:
+                return self._json(404, {'error': 'not found'})
+            detail = decode_json(row['detail_json'], {})
+            result = row_summary(row)
+            result['delivery'] = detail.get('delivery', '')
+            result['extension'] = detail.get('extension', '')
+            attach_access(result)
+            result['detail'] = detail
+            result['preview'] = decode_json(row['preview_json'], {})
+            result['error'] = row['error']
+            if row['source'] == 'AI Hub':
+                detail_path = os.path.join(ROOT, 'data', 'details', row['source_id'] + '.json')
+                if os.path.exists(detail_path):
+                    try:
+                        with open(detail_path, encoding='utf-8') as f:
+                            result['detail'] = json.load(f)
+                    except Exception as exc:
+                        result['error'] = repr(exc)
+                result['aihub'] = self.aihub_summary(row['source_id'])
+            return self._json(200, result)
+        finally:
+            con.close()
+
+    def aihub_summary(self, sn):
+        """AI Hub 원본 목록(datasets.json)의 요약 필드를 그대로 전달한다."""
+        try:
+            with open(AIHUB_JSON, encoding='utf-8') as f:
+                payload = json.load(f)
+        except Exception:
+            return {}
+        for item in payload.get('datasets', []):
+            if str(item.get('sn')) == str(sn):
+                keep = ('intro', 'purpose', 'meta', 'build_year', 'update_ym', 'build_amount', 'data_format',
+                        'label_type', 'label_format', 'data_source', 'use_service', 'builder_main', 'builder_sub',
+                        'gen_method', 'types', 'tags', 'size_bytes', 'status', 'approval_required',
+                        'offline_available', 'has_sample', 'has_manual', 'has_guide', 's3_file_cnt', 'notice')
+                return {k: item.get(k) for k in keep if item.get(k) not in (None, '')}
+        return {}
+
+    def catalog_facets(self, query):
+        con = connect(DB_PATH, readonly=True)
+        try:
+            # 분야 칩은 다중 선택이므로 분야 조건을 뺀 집합에서 개수를 센다.
+            where, args = self._catalog_where(query, include_search=False, include_field=False)
+            fields = [dict(r) for r in con.execute(
+                'SELECT field value,COUNT(*) count FROM catalog_items WHERE ' + where +
+                " AND field<>'' GROUP BY field ORDER BY count DESC,value LIMIT 60", args
+            )]
+            source = one(query, 'source')
+            fwhere, fargs = ['i.active=1'], []
+            if source in SOURCE_MAP:
+                fwhere.append('i.source=?')
+                fargs.append(SOURCE_MAP[source])
+            formats = [dict(r) for r in con.execute(
+                'SELECT f.format value,COUNT(*) count FROM item_formats f JOIN catalog_items i ON i.uid=f.uid '
+                'WHERE ' + ' AND '.join(fwhere) + ' GROUP BY f.format ORDER BY count DESC,f.format LIMIT 40', fargs
+            )]
+            return self._json(200, {'fields': fields, 'formats': formats})
+        finally:
+            con.close()
+
+    def field_names(self):
+        try:
+            con = connect(DB_PATH, readonly=True)
+            try:
+                return [r[0] for r in con.execute(
+                    "SELECT field FROM catalog_items WHERE active=1 AND field<>'' GROUP BY field ORDER BY COUNT(*) DESC")]
+            finally:
+                con.close()
+        except Exception:
+            return []
+
+    # ------------------------------------------------------------------ POST
+    def do_POST(self):
+        path = urlparse(self.path).path
+        try:
+            if path == '/api/my':
+                return self.save_my()
+            if path == '/api/settings':
+                body = self._body()
+                ai_service.save_settings(body if isinstance(body, dict) else {})
+                return self._json(200, ai_service.public_settings())
+            if path == '/api/ai/recommend':
+                return self.ai_recommend()
+            if path == '/api/recommendations/delete':
+                body = self._body()
+                return self._json(200, ai_service.delete_reco(str(body.get('id') or '')))
+            return self._json(404, {'error': 'not found'})
+        except ai_service.AiError as e:
+            return self._json(400, {'error': str(e)})
+        except Exception as e:  # noqa
+            return self._json(500, {'error': repr(e)})
+
+    def save_my(self):
+        try:
+            data = self._body()
             assert isinstance(data, dict) and isinstance(data.get('items'), dict)
         except Exception as e:
             return self._json(400, {'error': 'invalid json: %r' % e})
@@ -73,12 +384,22 @@ class Handler(SimpleHTTPRequestHandler):
             os.replace(tmp, MY_PATH)
         return self._json(200, {'ok': True, 'updated_at': data['updated_at'], 'count': len(data['items'])})
 
+    def ai_recommend(self):
+        body = self._body()
+        query = str(body.get('query') or '').strip()
+        model = str(body.get('model') or '').strip()
+        result = ai_service.recommend(query, model=model, aihub_access=load_aihub_access(),
+                                      fields_available=self.field_names())
+        return self._json(200, result)
+
 
 if __name__ == '__main__':
+    prepare_catalog()
     srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
     url = 'http://localhost:%d/' % PORT
-    print('AI-Hub 대시보드: %s   (종료: Ctrl+C 또는 창 닫기)' % url, flush=True)
+    print('통합 데이터 카탈로그: %s   (종료: Ctrl+C 또는 창 닫기)' % url, flush=True)
     print('내 데이터셋 저장 위치: %s' % MY_PATH, flush=True)
+    print('AI 설정 저장 위치: %s (git 제외)' % ai_service.SETTINGS_PATH, flush=True)
     if '--no-browser' not in sys.argv:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:

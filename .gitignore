@@ -1,6 +1,17 @@
-# 크롤링 원본 HTML 캐시 (약 240MB, 재수집 가능)
+# 크롤링 원본 HTML 캐시 (수백 MB, 재수집 가능)
 raw/
+
+# SQLite 카탈로그 본체 - 수백 MB라 깃허브에 올리지 않는다.
+# 대신 data/snapshot/*.jsonl.gz 를 커밋하고 python snapshot.py restore 로 되살린다.
+data/catalog.db
+data/catalog.db-wal
+data/catalog.db-shm
+
+# Gemini API 키 등 개인 설정
+data/settings.json
+
 __pycache__/
+*.pyc
 *.log
 *.tmp
 .DS_Store

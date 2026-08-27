@@ -1,57 +1,149 @@
-# AI-Hub 데이터셋 크롤링 & 로컬 대시보드
+# AI Hub + 공공데이터포털 통합 데이터 카탈로그
 
-AI-Hub(https://aihub.or.kr) 의 "데이터 찾기" 목록(약 977건)과 각 상세 페이지를 수집해
-JSON으로 관리하고, 로컬 대시보드로 훑어볼 수 있게 한 도구입니다.
+AI Hub 데이터셋(975건)과 공공데이터포털 파일데이터(약 84,000건)를 한 화면에서 검색·비교하고,
+**Gemini에게 목적을 설명하면 필요한 데이터를 추천받는** 로컬 대시보드입니다.
 
-## 파일 구성
+```text
+대시보드 실행.bat          # http://localhost:8765 통합 화면
+데이터 갱신.bat            # AI Hub + 공공데이터 목록/상세 메타데이터 갱신
+공공데이터 전체 수집.bat   # 남은 데이터 미리보기까지 전체 수집/재개
+스냅샷 내보내기.bat        # 깃에 올릴 수 있는 크기로 카탈로그 내보내기
+```
+
+> 처음 clone 했다면 `대시보드 실행.bat` 만 실행하면 됩니다.
+> `data/catalog.db` 가 없으면 깃에 포함된 스냅샷에서 **자동으로 복원**한 뒤 서버가 뜹니다.
+
+---
+
+## 1. 화면 구성
+
+### 통합 / AI Hub / 공공데이터포털 탭
+- **분야 필터**: 네모 칩을 눌러 **여러 개 동시 선택**(공공행정 + 보건의료 …). `전체`로 해제.
+- **제공 방식 컬럼**: 데이터를 실제로 받을 수 있는지 표에서 바로 구분합니다.
+
+  | 배지 | 뜻 |
+  |---|---|
+  | `↓ 다운로드` | AI Hub: 신청 후 내려받기 가능(866건) · 공공데이터: 포털에서 파일 다운로드 |
+  | `↓ 다운로드 (승인)` | AI Hub 개별 승인 절차가 필요한 데이터 |
+  | `🔒 안심존` | AI Hub 안심존 데이터(109건). 이용신청 후 **열람만** 가능, 다운로드 불가 |
+  | `↗ 기관 제공` | 공공데이터: 제공기관 자체 사이트에서 다운로드 |
+  | `↗ 오프라인` | 전자기록매체로만 제공 |
+
+  AI Hub 행에는 용량(예: 228 GB)도 함께 표시됩니다.
+- 검색어/형식/미리보기 필터, 열 정렬, 페이지네이션(25·50·100·200)은 모두 **서버에서** 처리하므로
+  8만 건이어도 브라우저가 느려지지 않습니다.
+- ★ 를 누르면 **내 데이터**에 담기고 `data/my_datasets.json` 에 저장됩니다.
+
+### 상세 패널 — 출처별로 탭 구성이 다릅니다
+| 출처 | 탭 |
+|---|---|
+| **AI Hub** | 개요(소개·구축목적·제공정보·기본정보·구축업체·AI 성능) / 메타데이터 구조표 / 데이터 통계 / 어노테이션·데이터 구조 / 활용 AI 모델 / 데이터 성능 / 저작도구 / 구축 업체 / 변경 이력 |
+| **공공데이터포털** | 개요(설명·핵심정보) / 파일데이터 정보(기본·제공정보 전체) / 데이터 항목(컬럼) / 미리보기(행 샘플) |
+
+### ✦ AI 추천 탭
+화면 하단의 **"어떤 주제에 필요한 데이터가 필요하신가요?"** 바를 누르면 열립니다.
+
+1. 목적을 문장으로 입력 — 예) *"청소년 우울증 조기선별 모델을 만들고 싶습니다"*
+2. Gemini가 **검색 키워드**를 뽑고 → 로컬 카탈로그 84,933건에서 후보 40여 건을 찾아 →
+   목적에 맞는 데이터만 골라 이유·활용법을 정리합니다. (지어낸 데이터가 섞이지 않도록
+   **카탈로그에 실제 존재하는 uid만** 통과시킵니다.)
+3. 결과 구성
+   - **필요한 기능** — 목적 달성에 필요한 기능과 각 기능에 필요한 데이터 항목
+   - **추천 데이터** — 핵심/보조/참고로 묶어서, 출처·분야·제공방식 배지 + 왜 필요한지 + 활용 방법 +
+     활용할 컬럼 + **원문 주소** + `상세`(패널 열기) / `담기`(내 데이터) 버튼
+   - **활용 흐름** — 수집→가공→모델링 단계
+   - **유의사항**, **추가로 확보하면 좋은 데이터**
+4. 결과는 **자동 저장**되어 왼쪽 "저장된 추천" 목록에서 다시 볼 수 있습니다
+   (`data/recommendations.json`). `?reco=<id>` 로 바로 열 수도 있습니다.
+
+### AI 설정 (오른쪽 위 ⚙)
+- **Gemini API 키**: [Google AI Studio](https://aistudio.google.com/apikey)에서 발급.
+- **모델**: 키를 저장하면 계정에서 실제 사용 가능한 모델 목록을 불러와 고를 수 있습니다.
+  (기본값 `gemini-2.5-flash` — 빠르고 저렴. 정확도가 필요하면 `gemini-2.5-pro`)
+- 키는 **이 PC의 `data/settings.json` 에만** 저장되고 브라우저로 다시 내려보내지 않으며
+  `.gitignore` 로 깃에서 제외됩니다.
+
+---
+
+## 2. 깃 업로드 방식 (용량 문제 해결)
+
+`data/catalog.db` 는 원본 HTML·미리보기 본문까지 담고 있어 **400MB 이상**이라 그대로 올릴 수 없습니다
+(GitHub 파일 상한 100MB). 그래서 **스냅샷 방식**을 씁니다.
+
+| | 크기 | 깃 |
+|---|---|---|
+| `data/catalog.db` | 약 400MB | ❌ 제외 |
+| `raw/` (원본 HTML 캐시) | 수백 MB | ❌ 제외 |
+| `data/settings.json` (API 키) | – | ❌ 제외 |
+| **`data/snapshot/items-*.jsonl.gz`** | **약 32MB** | ✅ 커밋 |
+| `data/datasets.json`, `data/details/` | 약 38MB | ✅ 커밋 |
+
+```bash
+python snapshot.py export    # catalog.db  -> data/snapshot/*.jsonl.gz (파트당 38MB 이하로 분할)
+python snapshot.py restore   # 스냅샷      -> catalog.db 재생성
+python snapshot.py info      # 현재 상태 확인
+```
+
+- 스냅샷에는 목록·분야·기관·형식·설명·상세 기본정보·**미리보기 컬럼명**이 들어갑니다.
+  용량이 큰 **미리보기 행 본문과 원본 HTML은 제외**되며, 필요하면
+  `python crawl_data_go_kr.py --missing-previews --previews` 로 다시 채웁니다.
+- 데이터를 갱신한 뒤에는 `스냅샷 내보내기.bat` 을 한 번 실행하고 커밋하세요.
+
+---
+
+## 3. 파일 구성
+
 | 경로 | 설명 |
 |---|---|
-| `crawl_aihub.py` | 크롤러. 목록 13페이지 + 상세 페이지 수집 후 파싱 |
-| `data/datasets.json` | **목록 JSON(경량, ~2.4MB)**. `meta`(수집일·건수) + `datasets[]` — 대시보드 초기 로딩용 |
-| `data/details/<sn>.json` | 데이터셋별 상세(메타데이터 구조표·데이터 통계·어노테이션·AI모델·구축업체 HTML 등). 상세 패널을 열 때만 로드 |
-| `data/my_datasets.json` | **내 데이터셋**(담은 항목·데이터 있음 여부·메모·로컬 경로). 대시보드에서 변경하면 서버가 자동 저장 |
-| `index.html` | 대시보드 (단일 파일) |
-| `serve.py` | 로컬 서버(포트 8765). 정적 파일 제공 + `/api/my` 로 my_datasets.json 읽기/저장 |
-| `대시보드 실행.bat` | `serve.py` 실행 + 브라우저 자동 오픈 |
-| `데이터 갱신.bat` | 목록 다시 받고 **새 데이터셋만** 상세 추가 수집 → JSON 재생성 |
-| `raw/list/`, `raw/view/` | 받아온 원본 HTML 캐시(dataSetSn 별). 있으면 재요청 안 함 |
+| `catalog.html` | 통합 대시보드(목록·상세·내 데이터·AI 추천·설정) |
+| `serve.py` | 로컬 서버 + API. 루트에서 `catalog.html` 제공 |
+| `ai_service.py` | Gemini 호출, 로컬 후보 검색, 추천 생성/보관 |
+| `snapshot.py` | 카탈로그 스냅샷 내보내기/복원 |
+| `catalog_db.py` | 통합 SQLite 스키마와 AI Hub 동기화 |
+| `crawl_aihub.py` | AI Hub 목록·상세 수집기 |
+| `crawl_data_go_kr.py` | 공공데이터포털 목록·상세·미리보기 수집기 |
+| `data/catalog.db` | 검색·필터·상세·미리보기 DB (깃 제외, 스냅샷에서 복원) |
+| `data/snapshot/` | 깃에 올리는 카탈로그 스냅샷 |
+| `data/datasets.json`, `data/details/<sn>.json` | AI Hub 목록·상세 원본 |
+| `data/my_datasets.json` | ★로 담은 내 데이터 |
+| `data/recommendations.json` | 저장된 AI 추천 |
+| `data/settings.json` | Gemini API 키·모델 (깃 제외) |
+| `index.html` | 기존 AI Hub 전용 대시보드(보존) |
 
-## 사용법
-```
+### 서버 API
+| 엔드포인트 | 설명 |
+|---|---|
+| `GET /api/catalog/list` | `source`, `q`, `field`(다중), `format`, `preview`, `page`, `per`, `sort`, `dir` |
+| `GET /api/catalog/detail?uid=` | 출처별 상세 + `access`(제공 방식) |
+| `GET /api/catalog/facets` | 분야·형식 집계 |
+| `GET /api/catalog/stats` | 출처별 건수, AI Hub 제공방식 집계 |
+| `GET·POST /api/my` | 내 데이터 |
+| `GET·POST /api/settings` | Gemini 키(마스킹 반환)·모델 |
+| `GET /api/ai/models` | 사용 가능한 Gemini 모델 목록 |
+| `POST /api/ai/recommend` | `{query}` → 추천 생성 + 저장 |
+| `GET /api/recommendations`, `POST /api/recommendations/delete` | 추천 보관함 |
+
+---
+
+## 4. 수집기 사용법
+
+```bash
 pip install requests beautifulsoup4
-python crawl_aihub.py            # 전체 수집(캐시 있으면 건너뜀) + JSON 생성   (~5분)
-python crawl_aihub.py --refresh  # 목록 갱신 + 새 항목만 수집
-python crawl_aihub.py --parse    # 재수집 없이 raw/ 에서 다시 파싱만
+
+# AI Hub
+python crawl_aihub.py                # 전체 수집(캐시 사용) + JSON 생성
+python crawl_aihub.py --refresh      # 목록 갱신 + 새 항목만 수집
+python crawl_aihub.py --parse        # 재수집 없이 다시 파싱
+
+# 공공데이터포털
+python crawl_data_go_kr.py --list --catalog --details      # 목록/상세정보 갱신
+python crawl_data_go_kr.py --missing-previews --previews   # 미리보기 확인 + 이어받기
+python crawl_data_go_kr.py --status                        # 수집 현황
+python crawl_data_go_kr.py --details --previews --id 15118669
 ```
-대시보드: `대시보드 실행.bat` 실행 (또는 `python serve.py`) → http://localhost:8765
-`?sn=71982` 처럼 열면 해당 데이터셋 상세가 바로 뜹니다. (file:// 로 직접 열면 JSON을 읽지 못해 동작하지 않습니다)
 
-## 대시보드 기능
-**전체 데이터셋 탭**
-- 제공 방식 태그(사이트 기준): `↓ 다운로드` (다운로드 신청 가능, `(승인)`은 개별 승인 필요) / `🔒 안심존 신청` (열람만, 다운로드 불가) / 준비중
-- **내 보유**: `● 데이터 있음` 은 *내가 다운로드를 마쳤다고 표시한 것*만. 사이트의 다운로드 가능 여부와 별개
-- ★ 담기 → 내 데이터셋에 추가. KPI 카드·분야/유형 칩·셀렉트 필터, 헤더 클릭 정렬, 페이지네이션(25/50/100/200)
-- 행 클릭 → 상세 패널(개요·메타데이터 구조표·데이터 통계·어노테이션·활용 AI 모델·데이터 성능·구축 업체)
-
-**내 데이터셋 탭**
-- 담은 항목 수 / 전부 받으면 총 용량 / 데이터 있음 개수·보유 용량 / 남은 다운로드 개수·용량 (진행 바)
-- 항목별 데이터 있음 토글, 메모, 로컬 경로 입력 → `data/my_datasets.json` 자동 저장
-- JSON·CSV 내보내기, JSON 불러오기(병합)
-
-## JSON 주요 필드 (`datasets[]`)
-`sn`(dataSetSn), `title`, `url`, `field`(분야), `types`(유형[]), `gen_method`(생성방식), `build_year`, `update_ym`,
-`size_bytes`, `views`, `downloads`, `likes`, `tags[]`, `status`, `approval_required`, `offline_available`, `has_sample`,
-`s3_file_cnt`, `intro`, `purpose`, `meta{}`(메타데이터 구조표 key→value), `data_format`, `label_type`, `label_format`,
-`build_amount`, `builder_main`, `builder_sub[]`
-(상세 파일 `details/<sn>.json`: `sections{content,meta,stats,annotation,prcuseAi,prfomnc,autool,cnstcEntrps}`(정리된 HTML), `version_history`, `data_history`, `ai_perf`, `tabs`, `head_buttons`)
+건별 상태를 SQLite에 저장하므로 중간에 중단해도 같은 명령으로 이어서 수집합니다.
 
 ## 참고
-- 사이트 표시 977건 중 975건이 수집됨: 페이지를 넘기는 사이 정렬(최신순)이 바뀌어 2건이 중복 노출된 것으로, 실제 누락은 아님. `--refresh` 로 재확인 가능.
-- 파일 목록(파일명/개별 용량)은 로그인 후 AJAX로만 제공되어 수집 대상에서 제외.
-
-## my_datasets.json 구조
-```json
-{"updated_at": "2026-08-26 16:00:00",
- "items": {"71982": {"sn": "71982", "title": "…", "field": "헬스케어", "size_bytes": 245182624311, "avail": "다운로드",
-                      "url": "…", "have": true, "have_at": "2026-08-26", "memo": "", "path": "D:\data\nail", "added_at": "2026-08-26"}}}
-```
+- AI Hub 사이트 표시 977건 중 975건 수집: 페이지 이동 중 최신순 정렬이 바뀌어 2건이 중복 노출된 것으로 실제 누락은 아닙니다.
+- AI Hub 파일 목록(개별 파일명·용량)은 로그인 후 AJAX로만 제공되어 수집 대상에서 제외했습니다.
