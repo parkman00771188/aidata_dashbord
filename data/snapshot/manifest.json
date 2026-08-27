@@ -1,5 +1,5 @@
 {
- "exported_at": "2026-08-28 01:01:52",
+ "exported_at": "2026-08-28 01:50:09",
  "count": 84933,
  "parts": [
   "items-01.jsonl.gz"
@@ -13,8 +13,8 @@
   "public_catalog_path": "raw\\data_go_kr\\catalog\\public_data_catalog_20260731.csv",
   "public_catalog_imported": "83593",
   "public_catalog_imported_at": "2026-08-27 16:09:38",
-  "public_preview_progress": "{\"done\": 500, \"target\": 8437, \"errors\": 0, \"remaining_seconds\": 2699, \"updated_at\": \"2026-08-28 01:01:09\"}",
-  "public_preview_last_run": "2026-08-27 22:51:59"
+  "public_preview_progress": "{\"done\": 8437, \"target\": 8437, \"errors\": 0, \"remaining_seconds\": 0, \"updated_at\": \"2026-08-28 01:45:57\"}",
+  "public_preview_last_run": "2026-08-28 01:45:57"
  },
  "note": "미리보기 본문 행과 원본 HTML은 용량 때문에 제외되어 있습니다. python crawl_data_go_kr.py --missing-previews 로 다시 채울 수 있습니다."
 }
