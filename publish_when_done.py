@@ -75,15 +75,21 @@ def crawler_running() -> bool:
 
 
 def resume_crawler(workers: int) -> bool:
-    """수집기가 죽어 있으면 다시 띄운다(중단 지점부터 이어받는다)."""
+    """수집기가 죽어 있으면 다시 띄운다(중단 지점부터 이어받는다).
+
+    남은 항목은 두 종류라 두 옵션을 함께 줘야 끝까지 처리된다.
+      --previews         : 목록에 상세키(detail_pk)가 있는 항목
+      --missing-previews : 상세키가 없어 상세 페이지부터 확인해야 하는 항목
+    """
     log_path = os.path.join(ROOT, "crawl_previews.log")
+    cmd = [sys.executable, "crawl_data_go_kr.py", "--missing-previews", "--previews",
+           "--workers", str(workers)]
     try:
         flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         with open(log_path, "a", encoding="utf-8") as fh:
-            fh.write("\n=== %s 재개 ===\n" % time.strftime("%Y-%m-%d %H:%M:%S"))
+            fh.write("\n=== %s 재개: %s ===\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), " ".join(cmd[1:])))
             fh.flush()
-            subprocess.Popen([sys.executable, "crawl_data_go_kr.py", "--previews", "--workers", str(workers)],
-                             cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT,
+            subprocess.Popen(cmd, cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT,
                              env=dict(os.environ, PYTHONIOENCODING="utf-8"), creationflags=flags)
         log("수집기를 다시 실행했습니다 (로그: crawl_previews.log)")
         return True
