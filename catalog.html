@@ -721,8 +721,8 @@
     const admin=!!settings.admin;
     $('#adminLogin').hidden=admin;$('#adminPanel').hidden=!admin;
     $('#setKey').closest('.field').hidden=!admin;
-    // 모델은 로그인 전에도 무엇이 쓰이는지 보이게 하고, 바꾸는 것만 관리자로 제한한다
-    $('#setModel').closest('.field').hidden=false;
+    // 모델 선택은 관리자 전용이므로 로그인 전에는 보이지 않게 한다
+    $('#setModel').closest('.field').hidden=!admin;
     $('#setModel').disabled=!admin;
     $('#setCustomOn').closest('.inline-check').hidden=!admin;
     $('#setCustom').hidden=!admin||!$('#setCustomOn').checked;
