@@ -57,6 +57,25 @@ function candidateBlock(candidates, reasons) {
   }).join('\n');
 }
 
+/* 적합도 점수 -> 역할. 임계값을 코드에 고정해 같은 점수면 언제나 같은 역할이 나오게 한다.
+ * (LLM 이 라벨을 직접 고르게 하면 같은 질문에도 매번 뒤바뀌었다.) */
+const FIT_CORE = 70, FIT_SUB = 40, FIT_MIN = 20;
+// 모델이 고르는 3단계. 역할과 1:1 로 대응해서 '몇 점을 줄까'라는 애매한 판단을 없앤다.
+const FIT_LADDER = [90, 60, 30];
+const roleOfFit = f => (f >= FIT_CORE ? '핵심' : f >= FIT_SUB ? '보조' : '참고');
+function clampFit(value, fallbackRole) {
+  let fit = Number(value);
+  if (!Number.isFinite(fit)) {
+    const map = { '핵심': 90, '보조': 60, '참고': 30 };
+    return map[String(fallbackRole || '').trim()] || 60;
+  }
+  fit = Math.max(0, Math.min(100, fit));
+  if (fit < FIT_MIN) return Math.round(fit);
+  return FIT_LADDER.reduce((best, x) =>
+    (Math.abs(x - fit) < Math.abs(best - fit) || (Math.abs(x - fit) === Math.abs(best - fit) && x > best)) ? x : best,
+    FIT_LADDER[0]);
+}
+
 const UID_RE = /(?:aihub|public):[0-9]+/g;
 function humanize(text, byUid) {
   if (!text) return '';
@@ -86,6 +105,14 @@ export async function onRequestPost({ request, env }) {
       : 'AI 추천 기능이 꺼져 있습니다. 관리자가 설정에서 켜야 사용할 수 있습니다.', 503);
   }
   const model = settings.model || DEFAULT_MODEL;
+  /* 같은 질문이면 같은 답이 나오도록 결과를 캐시한다.
+   * Gemini 는 temperature 0 에서도 사고 과정이 매번 달라 역할(핵심/보조)이 뒤바뀌곤 했다.
+   * 접두어의 버전을 올리면 옛 캐시는 자동으로 무시된다. */
+  const recoKey = 'reco:fit-tier3-1:' + model + ':' + query.replace(/\s+/g, ' ').toLowerCase().slice(0, 300);
+  if (env.SETTINGS && !body.refresh) {
+    const hit = await env.SETTINGS.get(recoKey);
+    if (hit) { try { return json({ ...JSON.parse(hit), cached: true }); } catch (e) {} }
+  }
   const hasSafezone = candidates.some(c => c.access && c.access.type === '안심존');
   const plan = body.plan || {};
   const wantsAi = ['true', '1', 'yes', '예', 'y'].includes(String(plan.wants_ai_training).toLowerCase());
@@ -110,7 +137,7 @@ ${hasSafezone ? '\n' + SAFEZONE_GUIDE + '\n' : ''}
     {"name": "필요한 기능 이름", "detail": "무엇을 하는 기능인지 한두 문장", "data_need": "이 기능에 필요한 데이터 항목"}
   ],
   "datasets": [
-    {"uid": "후보 목록의 uid", "role": "핵심|보조|참고",
+    {"uid": "후보 목록의 uid", "fit": 목적 달성 기여도 점수(0~100 정수, 아래 채점 기준을 그대로 적용),
      "why": "이 목적에 왜 필요한지. 어떤 데이터항목 때문에 쓸 만한지 근거를 넣는다",
      "usage": "구체적인 활용 방법. 어떤 항목을 어떻게 가공/결합하는지",
      "items": ["실제로 쓸 데이터항목 3~6개. 후보의 '데이터항목'에 있는 이름 그대로"],
@@ -127,21 +154,38 @@ ${hasSafezone ? '\n' + SAFEZONE_GUIDE + '\n' : ''}
   "missing": ["후보에 없어서 추가로 확보해야 할 데이터 1~3개"]${hasSafezone ? SAFEZONE_SCHEMA : ''}
 }
 
+[fit 채점 - 아래 세 값 중 하나만 쓴다. 다른 숫자는 절대 쓰지 않는다]
+  90 (필수) : 이 데이터를 빼면 목적을 이룰 수 없다.
+              학습·분석의 대상 그 자체이거나, 이 데이터에만 있는 입력이 반드시 필요하다.
+  60 (보강) : 있으면 정확도나 적용 범위가 넓어진다. 빠져도 만들려는 것은 그대로 동작한다.
+  30 (참고) : 직접 쓰지는 않는다. 방법론 참고나 결과 검증 비교용으로만 본다.
+              지역만 다른 같은 종류의 데이터도 여기에 넣는다.
+  세 가지 어디에도 해당하지 않으면 datasets 에 넣지 않는다.
+
+판단 방법: 반드시 "이 데이터를 빼면 무엇이 불가능해지는가"만 묻는다.
+  - 만들려는 것 자체가 불가능해진다        -> 90
+  - 만들 수는 있는데 품질·범위가 떨어진다  -> 60
+  - 아무것도 달라지지 않는다               -> 30
+데이터가 좋아 보인다고 90 을 주지 않는다. 순위를 맞추려고 점수를 조정하지 않는다.
+쓰임새가 같은 데이터에는 반드시 같은 점수를 준다.
+
 규칙:
-- datasets 는 중요도 순으로 최대 15개. '핵심'은 3~5개로 제한한다. 목적에 직접 관련된 후보는 놓치지 말되, 무관한 데이터로 개수를 채우지 않는다. 맞는 데이터가 3~4개뿐이면 그만큼만 추천한다.
+- datasets 는 최대 15개. 무관한 데이터를 넣어 개수를 채우지 않는다.
+- 90점·60점을 준 데이터는 pipeline 의 uses 에도 등장시키는 것을 원칙으로 한다.
+- 30점(참고)은 정말 방법론이나 결과 검증에 도움이 되는 것만 최대 2개까지 넣는다. 마땅한 것이 없으면 넣지 않는다. 억지로 채우지 않는다.
 - 같은 성격의 데이터가 여러 건이면(예: 격자 크기만 다른 유동인구 데이터) 가장 알맞은 1~2개를 고른다.
 - items 는 반드시 해당 후보의 '데이터항목'에 실제로 있는 이름만 쓴다. 항목 정보가 없는 후보는 데이터명·설명·행수로 판단하고 items 는 비우고 why 에 "항목 미확인"이라고 적는다. 항목 정보가 없다는 이유만으로 제외하지 않는다.
 - 데이터항목이 있는데 목적에 쓸 값이 전혀 없다고 판단되면 그 후보는 고르지 않는다.
-- '★ AI Hub 전문가 검토' 표시가 붙은 후보는 데이터명이 목적과 달라 보여도 내용이 맞는 것으로 확인된 것이다. 특별한 이유가 없으면 '핵심' 또는 '보조'로 포함하고, 그 근거를 why 에 반영한다.
+- '★ AI Hub 전문가 검토' 표시가 붙은 후보는 데이터명이 목적과 달라 보여도 내용이 맞는 것으로 확인된 것이다. 특별한 이유가 없으면 60점 이상을 주고, 그 근거를 why 에 반영한다.
 - pipeline 의 detail 은 "A 데이터의 X 항목과 B 데이터의 Y 항목을 Z 기준으로 결합한다" 처럼 실제 데이터명과 항목명을 넣어 쓴다.
 - 설명 문장에서는 uid 대신 사람이 읽는 데이터명을 쓴다.
 - features 는 3~6개, pipeline 은 4~6단계로 만든다.
-- 특정 지역이 지정된 요구라면 그 지역 데이터를 우선 고르고, 다른 지역의 같은 종류 데이터는 방법론 참고용으로 1~2개만 '참고'에 넣는다.
-- AI 학습 목적이고 원하는 형태가 이미지·음성·영상이면 그 형태의 학습 데이터(주로 AI Hub)를 핵심에 두고, 통계·현황 데이터는 라벨·보조 정보로 배치한다.${hasSafezone ? SAFEZONE_RULES : ''}`;
+- 특정 지역이 지정된 요구라면 그 지역 데이터를 우선 고르고, 다른 지역의 같은 종류 데이터는 방법론 참고용으로 1~2개만 30점으로 넣는다.
+- AI 학습 목적이고 원하는 형태가 이미지·음성·영상이면 그 형태의 학습 데이터(주로 AI Hub)에 90점을 주고, 통계·현황 데이터는 라벨·보조 정보로 보아 60점에 둔다.${hasSafezone ? SAFEZONE_RULES : ''}`;
 
   let result, usage;
   try {
-    const r = await geminiJSON(key, model, SYSTEM, prompt, 0.1);
+    const r = await geminiJSON(key, model, SYSTEM, prompt, 0.0);
     result = r.data; usage = r.usage;
   } catch (e) {
     return bad(String(e.message || e), 502);
@@ -155,12 +199,14 @@ ${hasSafezone ? '\n' + SAFEZONE_GUIDE + '\n' : ''}
   (result.datasets || []).slice(0, 16).forEach(item => {
     const row = byUid[String(item.uid || '').trim()];
     if (!row) { dropped++; return; }
+    const fit = clampFit(item.fit, item.role);
+    if (fit < FIT_MIN) return;
     datasets.push({
       uid: row.uid, source: row.source, source_id: row.source_id, title: row.title,
       field: row.field || '', subfield: row.subfield || '', organization: row.organization || '',
       url: row.url || '', formats: row.formats || [], row_count: row.row_count || 0,
       downloads: row.downloads || 0, modified_at: row.modified_at || '', update_cycle: '',
-      access: row.access, role: String(item.role || '참고').slice(0, 6),
+      access: row.access, fit, role: roleOfFit(fit),
       why: humanize(item.why, byUid), usage: humanize(item.usage, byUid),
       items: (item.items || []).map(String).slice(0, 8),
       join_key: String(item.join_key || ''),
@@ -168,6 +214,12 @@ ${hasSafezone ? '\n' + SAFEZONE_GUIDE + '\n' : ''}
       column_count: row.column_count || 0,
     });
   });
+
+  // 점수 내림차순 + 같은 점수면 검색 단계의 순위(결정론적)로 정렬한다.
+  const rankOf = new Map(candidates.map((c, i) => [c.uid, i]));
+  datasets.sort((a, b) => (b.fit - a.fit)
+    || ((rankOf.get(a.uid) ?? 999) - (rankOf.get(b.uid) ?? 999))
+    || a.title.localeCompare(b.title, 'ko'));
 
   const locked = datasets.filter(d => d.access && d.access.type === '안심존');
   let safezone = null;
@@ -186,7 +238,7 @@ ${hasSafezone ? '\n' + SAFEZONE_GUIDE + '\n' : ''}
   }
 
   const id = (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : String(Date.now())).slice(0, 12);
-  return json({
+  const payload = {
     id,
     created_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
     query, model,
@@ -213,5 +265,13 @@ ${hasSafezone ? '\n' + SAFEZONE_GUIDE + '\n' : ''}
     candidate_count: candidates.length,
     dropped,
     usage: { ...usage, calls: (usage.calls || 1) + 1, cost: estimateCost(model, usage) },
-  });
+  };
+
+  // 같은 질문이면 같은 답이 나오도록 저장해 둔다(30일).
+  if (env.SETTINGS) {
+    try {
+      await env.SETTINGS.put(recoKey, JSON.stringify(payload), { expirationTtl: 60 * 60 * 24 * 30 });
+    } catch (e) { /* 캐시 저장 실패는 추천 자체를 막지 않는다 */ }
+  }
+  return json(payload);
 }

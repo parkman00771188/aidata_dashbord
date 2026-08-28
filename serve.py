@@ -465,7 +465,8 @@ class Handler(SimpleHTTPRequestHandler):
         query = str(body.get('query') or '').strip()
         model = str(body.get('model') or '').strip()
         result = ai_service.recommend(query, model=model, aihub_access=load_aihub_access(),
-                                      fields_available=self.field_names())
+                                      fields_available=self.field_names(),
+                                      refresh=bool(body.get('refresh')))
         return self._json(200, result)
 
 

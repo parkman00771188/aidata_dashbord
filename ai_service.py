@@ -862,7 +862,7 @@ RECO_PROMPT = """[사용자 목적]
     {{"name": "필요한 기능 이름", "detail": "무엇을 하는 기능인지 한두 문장", "data_need": "이 기능에 필요한 데이터 항목"}}
   ],
   "datasets": [
-    {{"uid": "후보 목록의 uid", "role": "핵심|보조|참고",
+    {{"uid": "후보 목록의 uid", "fit": 목적 달성 기여도 점수(0~100 정수, 아래 채점 기준을 그대로 적용),
       "why": "이 목적에 왜 필요한지 한두 문장. 어떤 데이터항목 때문에 쓸 만한지 근거를 넣는다",
       "usage": "구체적인 활용 방법. 어떤 항목을 어떻게 가공/결합하는지 적는다",
       "items": ["실제로 쓸 데이터항목 3~6개. 후보의 '데이터항목'에 있는 이름을 그대로 적는다"],
@@ -879,17 +879,33 @@ RECO_PROMPT = """[사용자 목적]
   "missing": ["후보에 없어서 추가로 확보해야 할 데이터 1~3개"]{safezone_schema}
 }}
 
+[fit 채점 - 아래 세 값 중 하나만 쓴다. 다른 숫자는 절대 쓰지 않는다]
+  90 (필수) : 이 데이터를 빼면 목적을 이룰 수 없다.
+              학습·분석의 대상 그 자체이거나, 이 데이터에만 있는 입력이 반드시 필요하다.
+  60 (보강) : 있으면 정확도나 적용 범위가 넓어진다. 빠져도 만들려는 것은 그대로 동작한다.
+  30 (참고) : 직접 쓰지는 않는다. 방법론 참고나 결과 검증 비교용으로만 본다.
+              지역만 다른 같은 종류의 데이터도 여기에 넣는다.
+  세 가지 어디에도 해당하지 않으면 datasets 에 넣지 않는다.
+
+판단 방법: 반드시 "이 데이터를 빼면 무엇이 불가능해지는가"만 묻는다.
+  - 만들려는 것 자체가 불가능해진다        -> 90
+  - 만들 수는 있는데 품질·범위가 떨어진다  -> 60
+  - 아무것도 달라지지 않는다               -> 30
+데이터가 좋아 보인다고 90 을 주지 않는다. 순위를 맞추려고 점수를 조정하지 않는다.
+쓰임새가 같은 데이터에는 반드시 같은 점수를 준다.
+
 규칙:
-- datasets 는 중요도 순으로 최대 15개. '핵심'은 3~5개로 제한한다.
-  목적에 직접 관련된 후보는 놓치지 말되, 무관한 데이터로 개수를 채우지 않는다.
-  맞는 데이터가 3~4개뿐이면 그만큼만 추천한다.
+- datasets 는 최대 15개. 무관한 데이터를 넣어 개수를 채우지 않는다.
+- 90점·60점을 준 데이터는 pipeline 의 uses 에도 등장시키는 것을 원칙으로 한다.
+- 30점(참고)은 정말 방법론이나 결과 검증에 도움이 되는 것만 최대 2개까지 넣는다.
+  마땅한 것이 없으면 넣지 않는다. 억지로 채우지 않는다.
 - 같은 성격의 데이터가 여러 건이면(예: 격자 크기만 다른 유동인구 데이터) 가장 알맞은 1~2개를 고른다.
 - items 는 반드시 해당 후보의 '데이터항목'에 실제로 있는 이름만 쓴다.
   항목 정보가 없는 후보(항목 정보 없음)는 데이터명·설명·행수로 판단하고, items 는 비우고
   why 에 "항목 미확인"이라고 적는다. 항목 정보가 없다는 이유만으로 제외하지 않는다.
 - 데이터항목이 있는데 목적에 쓸 값이 전혀 없다고 판단되면 그 후보는 고르지 않는다.
 - '★ AI Hub 전문가 검토' 표시가 붙은 후보는 데이터명이 목적과 달라 보여도 내용이 맞는 것으로 확인된 것이다.
-  특별한 이유가 없으면 '핵심' 또는 '보조'로 포함하고, 그 근거를 why 에 반영한다.
+  특별한 이유가 없으면 60점 이상을 주고, 그 근거를 why 에 반영한다.
 - features 의 data_need 도 가능하면 후보들의 실제 데이터항목 이름으로 적는다.
 - pipeline 의 detail 은 "A 데이터의 X 항목과 B 데이터의 Y 항목을 Z 기준으로 결합한다" 처럼
   실제 데이터명과 항목명을 넣어 쓴다. 일반론("전처리한다", "모델을 학습한다")만 쓰지 않는다.
@@ -898,9 +914,9 @@ RECO_PROMPT = """[사용자 목적]
 - features 는 3~6개, pipeline 은 4~6단계로 만든다.
 - 후보에 마땅한 데이터가 없으면 datasets 를 비우고 missing 에 이유를 적는다.
 - 특정 지역이 지정된 요구라면 그 지역 데이터를 우선 고르고, 다른 지역의 같은 종류 데이터는
-  방법론 참고용으로 1~2개만 '참고'에 넣는다.
-- AI 학습 목적이고 원하는 형태가 이미지·음성·영상이면 그 형태의 학습 데이터(주로 AI Hub)를
-  핵심에 두고, 통계·현황 데이터는 라벨·보조 정보로 배치한다.{safezone_rules}"""
+  방법론 참고용으로 1~2개만 30점으로 넣는다.
+- AI 학습 목적이고 원하는 형태가 이미지·음성·영상이면 그 형태의 학습 데이터(주로 AI Hub)에
+  90점을 주고, 통계·현황 데이터는 라벨·보조 정보로 보아 60점에 둔다.{safezone_rules}"""
 
 SAFEZONE_RULES = """
 - 제공방식이 '안심존'인 데이터를 추천했다면 safezone_plan 을 반드시 채운다.
@@ -1040,6 +1056,36 @@ def aihub_semantic_pick(query: str, plan: dict, model: str = "", usage=None) -> 
     return picks, reasons
 
 
+# 적합도 점수 -> 역할. 임계값을 코드에 고정해 같은 점수면 언제나 같은 역할이 나오게 한다.
+# (LLM 이 '핵심/보조/참고' 라벨을 직접 고르게 하면 같은 질문에도 매번 뒤바뀌었다.)
+FIT_CORE, FIT_SUB, FIT_MIN = 70, 40, 20
+
+
+def role_of_fit(fit: int) -> str:
+    if fit >= FIT_CORE:
+        return "핵심"
+    if fit >= FIT_SUB:
+        return "보조"
+    return "참고"
+
+
+# 모델이 고르는 3단계. 역할과 1:1 로 대응해서 '몇 점을 줄까'라는 애매한 판단을 없앤다.
+# (6단계로 나눴을 때는 75점과 60점 사이에서 판단이 흔들려 역할이 그대로 뒤집혔다.)
+FIT_LADDER = (90, 60, 30)
+
+
+def clamp_fit(value, fallback_role: str = "") -> int:
+    """fit 을 사다리 값으로 스냅한다. 없거나 이상하면 옛 role 라벨로 되돌린다."""
+    try:
+        fit = float(value)
+    except (TypeError, ValueError):
+        return {"핵심": 90, "보조": 60, "참고": 30}.get(str(fallback_role).strip(), 60)
+    fit = max(0.0, min(100.0, fit))
+    if fit < FIT_MIN:
+        return int(round(fit))
+    return min(FIT_LADDER, key=lambda x: (abs(x - fit), -x))
+
+
 def _safezone_plan(result: dict, by_uid: dict, datasets: list):
     """안심존 계획을 정리한다. 실제로 안심존 데이터를 추천했을 때만 남긴다."""
     locked = [d for d in datasets if (d.get("access") or {}).get("type") == "안심존"]
@@ -1060,7 +1106,51 @@ def _safezone_plan(result: dict, by_uid: dict, datasets: list):
     }
 
 
-def recommend(query: str, model: str = "", aihub_access: dict | None = None, fields_available=None) -> dict:
+RECO_CACHE_PATH = os.path.join(DATA_DIR, "reco_cache.json")
+# 프롬프트/채점 기준이 바뀌면 올린다. 옛 캐시는 자동으로 무시된다.
+RECO_CACHE_VERSION = "fit-tier3-1"
+
+
+def _reco_cache_key(query: str, model: str) -> str:
+    return "%s|%s|%s" % (RECO_CACHE_VERSION, model or "", _norm_query(query))
+
+
+def cached_reco(query: str, model: str):
+    """같은 질문·같은 모델이면 저장해 둔 추천을 그대로 돌려준다.
+
+    Gemini 는 temperature 0 에서도 사고 과정이 매번 달라 같은 질문에 역할(핵심/보조)이
+    뒤바뀌곤 했다. 결과를 캐시해 두면 같은 질문에는 언제나 같은 답이 나온다.
+    """
+    try:
+        with open(RECO_CACHE_PATH, encoding="utf-8") as f:
+            hit = json.load(f).get(_reco_cache_key(query, model))
+    except (OSError, ValueError):
+        return None
+    return hit.get("payload") if isinstance(hit, dict) else None
+
+
+def store_reco(query: str, model: str, payload: dict) -> None:
+    try:
+        try:
+            with open(RECO_CACHE_PATH, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            data = {}
+        data[_reco_cache_key(query, model)] = {
+            "at": time.strftime("%Y-%m-%d %H:%M:%S"), "payload": payload}
+        if len(data) > 400:      # 오래된 것부터 정리
+            for k in sorted(data, key=lambda k: data[k].get("at", ""))[:len(data) - 400]:
+                data.pop(k, None)
+        tmp = RECO_CACHE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, RECO_CACHE_PATH)
+    except OSError:
+        pass
+
+
+def recommend(query: str, model: str = "", aihub_access: dict | None = None, fields_available=None,
+              refresh: bool = False) -> dict:
     query = (query or "").strip()
     if len(query) < 2:
         raise AiError("찾고 싶은 데이터를 조금 더 자세히 적어 주세요.")
@@ -1069,6 +1159,14 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
     settings = load_settings()
     model = model or settings.get("model") or DEFAULT_MODEL
     usage = {}
+
+    # 같은 질문·같은 모델이면 저장해 둔 추천을 그대로 돌려준다(역할이 뒤바뀌지 않게).
+    if not refresh:
+        hit = cached_reco(query, model)
+        if hit:
+            hit = dict(hit)
+            hit["cached"] = True
+            return hit
 
     # 1단계 - 검색 키워드. 같은 질문은 캐시된 키워드를 재사용해 결과가 흔들리지 않게 한다.
     fields_available = fields_available or []
@@ -1133,7 +1231,7 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
             safezone_schema=SAFEZONE_SCHEMA if has_safezone else "",
             safezone_rules=SAFEZONE_RULES if has_safezone else "",
         ),
-        model=model, timeout=240, usage=usage, temperature=0.1,  # 같은 질문에 결과가 흔들리지 않게
+        model=model, timeout=240, usage=usage, temperature=0.0,  # 같은 질문에 결과가 흔들리지 않게
     )
 
     by_uid = {row["uid"]: row for row in candidates}
@@ -1142,6 +1240,9 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
         row = by_uid.get(str(item.get("uid", "")).strip())
         if row is None:
             dropped += 1
+            continue
+        _fit = clamp_fit(item.get("fit"), item.get("role"))
+        if _fit < FIT_MIN:
             continue
         acc = access_of(row, aihub_access)
         datasets.append({
@@ -1152,7 +1253,8 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
             "row_count": row.get("row_count") or 0, "downloads": row.get("downloads") or 0,
             "modified_at": row.get("modified_at") or "", "update_cycle": row.get("update_cycle") or "",
             "access": acc,
-            "role": str(item.get("role") or "참고")[:6],
+            "fit": _fit,
+            "role": role_of_fit(_fit),
             "why": humanize(str(item.get("why") or ""), by_uid),
             "usage": humanize(str(item.get("usage") or ""), by_uid),
             "items": [str(x) for x in (item.get("items") or [])][:8],
@@ -1160,6 +1262,11 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
             "columns": columns_of(row)[:40],
             "column_count": row.get("column_count") or 0,
         })
+
+    # 점수 내림차순 + 같은 점수면 검색 단계의 순위(결정론적)로 정렬한다.
+    # 화면 순서가 실행마다 흔들리지 않게 하고, 등급 안 순서에도 근거를 준다.
+    rank_of = {row["uid"]: i for i, row in enumerate(candidates)}
+    datasets.sort(key=lambda d: (-d["fit"], rank_of.get(d["uid"], 999), d["title"]))
 
     payload = {
         "id": uuid.uuid4().hex[:12],
@@ -1197,6 +1304,7 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
         "usage": dict(usage, cost=estimate_cost(model, usage)) if usage else None,
     }
     save_reco(payload)
+    store_reco(query, model, payload)
     return payload
 
 
