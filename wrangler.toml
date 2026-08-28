@@ -1,15 +1,17 @@
 # Cloudflare Pages 설정
-# 배포는 GitHub 연동(대시보드)으로 하고, 이 파일은 로컬 미리보기와 바인딩 참고용이다.
 #
-#   로컬 미리보기 : npx wrangler pages dev site --kv SETTINGS
-#   KV 생성       : npx wrangler kv namespace create SETTINGS
+# 배포(로그인 후 아무 데서나):
+#   npx wrangler login                 <- 브라우저에서 한 번만 승인
+#   python build_static.py             <- site/ 생성
+#   npx wrangler pages deploy site --project-name find-publicdata
+#
+# 로컬 미리보기:
+#   npx wrangler pages dev site --kv SETTINGS
 #
 name = "find-publicdata"
 pages_build_output_dir = "site"
 compatibility_date = "2026-01-01"
 
-# AI 설정(키·on/off·모델)과 키워드 캐시를 담는다.
-# 대시보드에서 KV 네임스페이스를 만들어 SETTINGS 로 바인딩하면 아래 id 는 없어도 된다.
-# [[kv_namespaces]]
-# binding = "SETTINGS"
-# id = "<KV 네임스페이스 ID>"
+# AI 설정(키·on/off·모델)과 키워드 캐시는 KV 에 저장한다.
+# 대시보드 → 프로젝트 → Settings → Bindings 에서
+# KV namespace 를 변수명 SETTINGS 로 연결하면 된다.

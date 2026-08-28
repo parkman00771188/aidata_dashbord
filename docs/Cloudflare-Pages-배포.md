@@ -12,40 +12,57 @@ GitHub 저장소를 연결하면 푸시할 때마다 자동으로 다시 빌드�
 
 ---
 
-## 1. 처음 한 번만 하는 설정
+## 1. 배포하기 — 방법 A: 직접 올리기 (가장 간단)
 
-### ① KV 네임스페이스 만들기
-Cloudflare 대시보드 → **Storage & Databases → KV → Create namespace**
-- 이름: `find-publicdata-settings` (아무 이름이나 가능)
+Git 연동 없이 만들어진 `site/` 를 그대로 업로드합니다. **빌드 설정을 만질 필요가 없습니다.**
 
-> AI 설정(키·on/off·모델)과 키워드 캐시가 여기에 저장됩니다.
+```bash
+npx wrangler login                                             # 브라우저에서 한 번만 승인
+python build_static.py                                         # site/ 생성 (약 1분)
+npx wrangler pages project create find-publicdata --production-branch main
+npx wrangler pages deploy site --project-name find-publicdata
+```
 
-### ② Pages 프로젝트 만들기
-**Workers & Pages → Create → Pages → Connect to Git** 에서 `aidata_dashbord` 저장소 선택 후:
+→ `https://find-publicdata.pages.dev` 완성.
+데이터를 갱신했을 때는 `python build_static.py && npx wrangler pages deploy site --project-name find-publicdata` 만 다시 실행하면 됩니다.
+
+### KV 연결 (AI 추천을 쓰려면 필요)
+대시보드 → **Workers & Pages → find-publicdata → Settings → Bindings → Add → KV namespace**
+
+| 변수 이름 | 값 |
+|---|---|
+| `SETTINGS` | 미리 만들어 둔 KV 네임스페이스 (예: `publicdata-finder-settings`) |
+
+바인딩을 추가한 뒤 한 번 더 배포하면 적용됩니다.
+
+---
+
+## 1-B. 방법 B: GitHub 연동 (푸시하면 자동 배포)
+
+> ⚠️ 요즘 Cloudflare 는 Git 연동 시 **Worker** 로 만드는 경우가 많습니다.
+> 그러면 `wrangler deploy` 가 실행되면서 `Missing entry-point to Worker script` 오류가 납니다.
+> 반드시 **Pages** 로 만들어야 합니다.
+
+**Workers & Pages → Create → `Pages` 탭 → Connect to Git** 에서 저장소 선택 후:
 
 | 항목 | 값 |
 |---|---|
-| 프로젝트 이름 | `find-publicdata` ← 주소가 `find-publicdata.pages.dev` 가 됩니다 |
+| 프로젝트 이름 | `find-publicdata` |
 | 프로덕션 브랜치 | `main` |
-| 빌드 명령 | `sh build.sh` |
-| 빌드 출력 디렉터리 | `site` |
+| **빌드 명령** | `sh build.sh` ← **비워 두면 배포가 실패합니다** |
+| **빌드 출력 디렉터리** | `site` |
 | 루트 디렉터리 | (비워 둠) |
 
-### ③ 바인딩·환경변수
-프로젝트 → **Settings → Bindings** 에서 KV 추가:
+그다음 위와 같이 **Settings → Bindings** 에서 KV 를 `SETTINGS` 로 연결합니다.
 
-| 종류 | 변수 이름 | 값 |
-|---|---|---|
-| KV namespace | `SETTINGS` | ①에서 만든 네임스페이스 |
-
-**Settings → Variables and Secrets** (Production·Preview 모두 권장):
+### 환경변수 (Settings → Variables and Secrets)
 
 | 이름 | 필요성 | 설명 |
 |---|---|---|
-| `ADMIN_PASSWORD` | **강력 권장** | 관리자 비밀번호. 없으면 기본값 `admin123!@#` 이 쓰이는데, 이 값은 공개 저장소에 적혀 있어 누구나 알 수 있습니다. **반드시 바꾸세요.** |
+| `ADMIN_PASSWORD` | **강력 권장** | 관리자 비밀번호. 없으면 기본값 `admin123!@#` 이 쓰이는데 이 값은 공개 저장소에 적혀 있습니다. **반드시 바꾸세요.** |
 | `ADMIN_USER` | 선택 | 관리자 아이디. 기본값 `admin` |
 | `ADMIN_SECRET` | 선택 | 로그인 세션 서명 키. 임의의 긴 문자열 |
-| `GEMINI_API_KEY` | 선택 | 관리자 화면에서 키를 넣는 대신 여기에 둘 수도 있습니다. 이때는 화면에서 "키 삭제"가 되지 않습니다. |
+| `GEMINI_API_KEY` | 선택 | 키를 환경변수로 둘 수도 있습니다(이때는 화면에서 "키 삭제"가 안 됩니다) |
 
 ---
 
