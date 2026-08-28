@@ -18,7 +18,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from catalog_db import DATA_DIR, DB_PATH, connect, decode_json
+from catalog_db import DATA_DIR, DB_PATH, connect, decode_json, has_fts
 
 SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")
 RECO_PATH = os.path.join(DATA_DIR, "recommendations.json")
@@ -388,8 +388,8 @@ def tokenize(text: str) -> list:
 SEARCH_FIELDS = (("i.title", 6.0), ("i.file_name", 3.0), ("i.keywords_json", 3.0),
                  ("c.columns_text", 2.5), ("i.description", 1.5))
 SCAN_CAP = 30000        # 점수 계산에 올릴 최대 행 수
-GLOBAL_TOP = 160        # 종합 점수 상위
-PER_KEYWORD_TOP = 20    # 키워드마다 반드시 확보할 상위 건수
+GLOBAL_TOP = 220        # 종합 점수 상위
+PER_KEYWORD_TOP = 30    # 키워드마다 반드시 확보할 상위 건수
 
 
 def expand_keywords(keywords, query: str = "") -> list:
@@ -412,18 +412,63 @@ def expand_keywords(keywords, query: str = "") -> list:
         add(kw)
     primary = len(out)
     for token in tokenize(query):          # 질문 토큰은 최대 4개만 보충
-        if len(out) >= primary + 4 or len(out) >= 14:
+        if len(out) >= primary + 6 or len(out) >= 24:
             break
         add(token)
-    return out[:14]
+    return out[:24]
+
+
+FTS_FIELDS = (("title_text", 6.0), ("meta_text", 3.0), ("desc_text", 1.5))
+FTS_LIMIT = 6000          # 키워드·필드마다 가져올 최대 uid 수
+
+
+def _fts_hits(con, keywords):
+    """키워드별 {uid: 필드가중치합} 을 구한다.
+
+    3글자 이상은 FTS5(trigram) 색인으로 즉시 찾고, 2글자는 trigram 으로 표현할 수
+    없으므로 슬림 테이블을 한 번만 스캔해 한꺼번에 처리한다.
+    """
+    hits = [dict() for _ in keywords]
+    short = [(i, kw) for i, kw in enumerate(keywords) if len(kw) < 3]
+    for i, kw in enumerate(keywords):
+        if len(kw) < 3:
+            continue
+        safe = kw.replace('"', " ").strip()
+        if not safe:
+            continue
+        for col, weight in FTS_FIELDS:
+            try:
+                rows = con.execute(
+                    "SELECT uid FROM search_fts WHERE search_fts MATCH ? LIMIT ?",
+                    ('%s : "%s"' % (col, safe), FTS_LIMIT)).fetchall()
+            except Exception:
+                rows = []
+            bucket = hits[i]
+            for (uid,) in rows:
+                bucket[uid] = bucket.get(uid, 0.0) + weight
+    if short:
+        exprs, args = [], []
+        for _, kw in short:
+            like = "%" + kw + "%"
+            exprs.append("(CASE WHEN title_text LIKE ? THEN 6.0 ELSE 0 END)"
+                         "+(CASE WHEN meta_text LIKE ? THEN 3.0 ELSE 0 END)"
+                         "+(CASE WHEN desc_text LIKE ? THEN 1.5 ELSE 0 END)")
+            args.extend([like] * 3)
+        names = ["s%d" % j for j in range(len(short))]
+        inner = ",".join("%s %s" % (e, n) for e, n in zip(exprs, names))
+        total = "+".join(names)
+        sql = ("WITH m AS (SELECT uid,%s FROM item_search) SELECT uid,%s FROM m WHERE (%s)>0"
+               % (inner, ",".join(names), total))
+        for row in con.execute(sql, args):
+            for j, (idx, _kw) in enumerate(short):
+                score = row[names[j]]
+                if score:
+                    hits[idx][row["uid"]] = score
+    return hits
 
 
 def _scan_scores(con, keywords, cap: int = SCAN_CAP):
-    """매칭되는 모든 행의 키워드별 점수를 한 번의 스캔으로 계산한다.
-
-    예전에는 다운로드순 상위 900건만 보고 점수를 매겨서, 관련도가 높아도
-    인기가 없는 데이터가 후보에 들어오지 못했다. 이제는 관련도 순으로 자른다.
-    """
+    """FTS 색인이 없을 때 쓰는 예비 경로(전체 스캔)."""
     parts, args = [], []
     for kw in keywords:
         like = "%" + kw + "%"
@@ -442,7 +487,13 @@ def _scan_scores(con, keywords, cap: int = SCAN_CAP):
         % (inner, ",".join(names), total, total)
     )
     args.append(cap)
-    return con.execute(sql, args).fetchall()
+    rows = con.execute(sql, args).fetchall()
+    hits = [dict() for _ in keywords]
+    for row in rows:
+        for i, name in enumerate(names):
+            if row[name]:
+                hits[i][row["uid"]] = row[name]
+    return hits
 
 
 def _fetch_rows(con, uids):
@@ -491,57 +542,53 @@ def _rows_for(con, keywords, use_description: bool, limit_rows: int):
 
 
 def search_candidates(keywords, fields=None, limit: int = 60, query: str = "") -> list:
-    """카탈로그 전체를 훑어 관련도 순으로 후보를 고른다.
+    """질문에 맞는 후보를 폭넓게 찾는다.
 
-    1) 매칭되는 모든 행의 키워드별 점수를 한 번의 스캔으로 계산한다.
-    2) 흔한 낱말(예: '등록')은 IDF 로 가중치를 낮춰 정밀도를 지킨다.
-    3) 종합 점수 상위 + '키워드마다 상위 N건'을 함께 확보해 특정 키워드가 묻히지 않게 한다.
-    4) 고른 후보만 상세를 읽어 최종 점수를 매긴다.
+    - 3글자 이상 키워드는 FTS5(trigram) 색인으로 즉시 조회하므로 키워드를 많이 써도 빠르다.
+    - 키워드마다 상위 N건을 반드시 확보해 특정 개념이 통째로 빠지지 않게 한다.
+    - 흔한 낱말은 IDF 로 가중치를 낮춰 정밀도를 지킨다.
     """
     keywords = expand_keywords(keywords, query)
     if not keywords:
         return []
     con = connect(DB_PATH, readonly=True)
     try:
-        scan = _scan_scores(con, keywords)
-        if not scan:
+        use_fts = has_fts(con)
+        hits = _fts_hits(con, keywords) if use_fts else _scan_scores(con, keywords)
+        matched = set()
+        for bucket in hits:
+            matched.update(bucket)
+        if not matched:
             return []
-        names = ["k%d" % i for i in range(len(keywords))]
 
-        # 키워드별 매칭 건수로 IDF 가중치 계산 (흔한 낱말일수록 낮게)
-        hits = [0] * len(keywords)
-        for row in scan:
-            for i, name in enumerate(names):
-                if row[name] > 0:
-                    hits[i] += 1
-        total_rows = max(1, len(scan))
-        idf = [max(0.35, math.log((total_rows + 1) / (h + 1)) / math.log(20) + 0.35) for h in hits]
+        # 흔한 낱말일수록 가중치를 낮춘다
+        total_rows = max(1, len(matched))
+        idf = [max(0.35, math.log((total_rows + 1) / (len(b) + 1)) / math.log(20) + 0.35) for b in hits]
 
-        # 재점수: 키워드 점수 x IDF
-        weighted = []
-        for row in scan:
-            score = sum(row[names[i]] * idf[i] for i in range(len(keywords)))
-            covered = sum(1 for i in range(len(keywords)) if row[names[i]] > 0)
-            weighted.append((score + covered * 3.0, row, covered))
-        weighted.sort(key=lambda x: -x[0])
+        combined = {}
+        for i, bucket in enumerate(hits):
+            weight = idf[i]
+            for uid, raw in bucket.items():
+                slot = combined.setdefault(uid, [0.0, 0])
+                slot[0] += raw * weight
+                slot[1] += 1
+        ranked = sorted(combined.items(), key=lambda kv: -(kv[1][0] + kv[1][1] * 3.0))
 
-        chosen = []
-        seen = set()
-        for score, row, _cov in weighted[:GLOBAL_TOP]:
-            if row["uid"] not in seen:
-                seen.add(row["uid"])
-                chosen.append(row["uid"])
-        # 키워드마다 상위 건을 반드시 포함시켜 개념 하나가 통째로 빠지지 않게 한다
-        for i, name in enumerate(names):
-            per = sorted((r for r in scan if r[name] > 0), key=lambda r: -r[name])[:PER_KEYWORD_TOP]
-            for row in per:
-                if row["uid"] not in seen:
-                    seen.add(row["uid"])
-                    chosen.append(row["uid"])
+        chosen, seen = [], set()
+        for uid, _ in ranked[:GLOBAL_TOP]:
+            seen.add(uid)
+            chosen.append(uid)
+        # 키워드마다 상위 건을 반드시 포함시킨다
+        for bucket in hits:
+            for uid, _raw in sorted(bucket.items(), key=lambda kv: -kv[1])[:PER_KEYWORD_TOP]:
+                if uid not in seen:
+                    seen.add(uid)
+                    chosen.append(uid)
 
         rows = _fetch_rows(con, chosen)
-        stats = {"matched": len(scan), "scanned_pool": len(chosen), "keywords": keywords,
-                 "keyword_hits": dict(zip(keywords, hits)), "capped": len(scan) >= SCAN_CAP}
+        stats = {"matched": len(matched), "scanned_pool": len(chosen), "keywords": keywords,
+                 "keyword_hits": {kw: len(b) for kw, b in zip(keywords, hits)},
+                 "engine": "fts" if use_fts else "scan", "capped": False}
     finally:
         con.close()
 
@@ -552,35 +599,15 @@ def search_candidates(keywords, fields=None, limit: int = 60, query: str = "") -
         row = by_uid.get(uid)
         if row is None:
             continue
-        title = (row["title"] or "") + " " + (row["file_name"] or "")
-        kws = row["keywords_json"] or ""
-        desc = row["description"] or ""
-        cols_text = row["columns_json"] or ""
-        score, covered = 0.0, 0
-        for i, kw in enumerate(keywords):
-            weight = idf[i]
-            hit = False
-            if kw in title:
-                score += 6 * weight
-                hit = True
-            if kw in kws:
-                score += 3 * weight
-                hit = True
-            if kw in cols_text:  # 실제 데이터 항목에 있으면 바로 쓸 수 있는 데이터다
-                score += 2.5 * weight
-                hit = True
-            if kw in desc:
-                score += 1.5 * weight
-                hit = True
-            covered += 1 if hit else 0
+        base, covered = combined.get(uid, [0.0, 0])
         if not covered:
             continue
-        score += covered * 4
+        score = base + covered * 4
         if row["field"] in fields:
             score += 5
         score += min(4.0, (row["downloads"] or 0) ** 0.35 / 6)
         if row["column_count"]:
-            score += 2
+            score += 2  # 데이터 항목을 아는 데이터가 실제 활용 판단에 유리하다
         if row["source"] == "AI Hub":
             score += 1.5  # AI 학습용 데이터는 목록이 적어 노출 기회를 보정
         scored.append((score, dict(row), covered))
@@ -639,14 +666,18 @@ KEYWORD_PROMPT = """사용자 요구:
 아래 JSON 형식으로만 답하라.
 {{
   "goal": "요구를 한 문장으로 정리",
-  "keywords": ["검색 키워드 10~14개, 중요한 것부터"],
+  "keywords": ["검색 키워드 16~22개, 중요한 것부터"],
   "fields": ["다음 분야명 중 관련된 것만: {fields}"]
 }}
 
 키워드 규칙:
 - 목적을 이루는 데 필요한 서로 다른 개념을 빠짐없이 넣는다(대상·현상·장소·시설·지표 등).
-- 같은 뜻의 다른 표기도 함께 넣는다. 예) 전기차 / 전기자동차, 충전소 / 충전기,
-  정신건강 / 심리 / 상담, 인구 / 유동인구 / 주민등록.
+- 검색은 매우 빠르므로 넉넉하게 넣는다. 놓치는 것보다 조금 넓게 잡는 편이 낫다.
+- 같은 뜻의 다른 표기를 반드시 함께 넣는다. 예) 전기차 / 전기자동차 / 친환경차,
+  충전소 / 충전기 / 충전시설, 정신건강 / 심리 / 상담 / 정신질환,
+  인구 / 유동인구 / 주민등록 / 세대수, 침수 / 홍수 / 강우 / 하천수위.
+- 붙여 쓴 형태와 띄어 쓴 형태가 다르면 둘 다 넣는다. 예) 전기차충전소 / 전기차 충전소.
+- 데이터가 담길 만한 기관·제도 이름도 넣는다. 예) 정신건강복지센터, 청소년상담복지센터.
 - 카탈로그의 데이터명이나 컬럼명에 실제로 등장할 법한 2~6글자 명사로 쓴다.
 - 조사·서술어('하는', '위한')와 '데이터', '정보' 같은 일반어는 넣지 않는다."""
 
@@ -843,7 +874,7 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
             KEYWORD_PROMPT.format(query=query, fields=", ".join(fields_available[:40])),
             model=model, timeout=90, usage=usage, temperature=0.0,
         )
-        keywords = [str(k).strip() for k in (plan.get("keywords") or []) if str(k).strip()][:14]
+        keywords = [str(k).strip() for k in (plan.get("keywords") or []) if str(k).strip()][:22]
         keywords = [k for k in keywords if k not in STOPWORDS]
         if not keywords:
             keywords = tokenize(query)

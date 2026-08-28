@@ -2,6 +2,7 @@
 """AI Hub + 공공데이터포털 통합 로컬 대시보드 서버."""
 import json
 import os
+import socket
 import sys
 import threading
 import time
@@ -10,8 +11,8 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 import ai_service
-from catalog_db import (DB_PATH, build_column_index, connect, decode_json, import_aihub,
-                        init_db, row_summary)
+from catalog_db import (DB_PATH, build_column_index, build_search_index, connect, decode_json,
+                        import_aihub, init_db, row_summary)
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 MY_PATH = os.path.join(ROOT, 'data', 'my_datasets.json')
@@ -88,6 +89,9 @@ def prepare_catalog():
             n = build_column_index(con)  # 비어 있을 때만 만든다
             if n:
                 print('데이터 항목 색인 %d건 생성' % n, flush=True)
+            n = build_search_index(con, rebuild=bool(n))
+            if n:
+                print('검색 색인 %d건 생성' % n, flush=True)
         finally:
             con.close()
     except Exception as e:  # noqa
@@ -107,6 +111,26 @@ def aihub_sync_needed(con):
     have = (row[0] if row else '') or ''
     count = con.execute("SELECT COUNT(*) FROM catalog_items WHERE source='AI Hub' AND active=1").fetchone()[0]
     return count == 0 or have.strip('"') != stamp
+
+
+# 분야·형식 집계와 전체 통계는 매 페이지 로드마다 같은 값이라 캐시한다.
+# (DB 파일이 바뀌면 자동으로 무효화된다.)
+_AGG_CACHE = {}
+
+
+def cached_agg(key, build):
+    try:
+        stamp = os.path.getmtime(DB_PATH)
+    except OSError:
+        stamp = 0
+    hit = _AGG_CACHE.get(key)
+    if hit and hit[0] == stamp:
+        return hit[1]
+    value = build()
+    if len(_AGG_CACHE) > 40:
+        _AGG_CACHE.clear()
+    _AGG_CACHE[key] = (stamp, value)
+    return value
 
 
 def one(query, key, default=''):
@@ -245,6 +269,9 @@ class Handler(SimpleHTTPRequestHandler):
     def catalog_stats(self, query):
         if not os.path.exists(DB_PATH):
             return self._json(200, {'total': 0, 'sources': [], 'meta': {}, 'database': False})
+        return self._json(200, cached_agg(('stats',), self._stats))
+
+    def _stats(self):
         con = connect(DB_PATH, readonly=True)
         try:
             rows = con.execute(
@@ -266,13 +293,27 @@ class Handler(SimpleHTTPRequestHandler):
                     access['안심존'] += 1
                 elif info.get('status') == '데이터 있음':
                     access['다운로드'] += 1
-            return self._json(200, {
+            # 화면에 쓸 수집 시각. 목록만 보여주면 미리보기 수집이 끝난 시점이
+            # 반영되지 않아 데이터가 오래된 것처럼 보인다.
+            def clean_stamp(value):
+                return str(value or '').strip().strip('"')[:19]
+
+            collected = {
+                'aihub': clean_stamp(meta.get('aihub_crawled_at')),
+                'public_list': clean_stamp(meta.get('public_list_crawled_at')),
+                'public_preview': clean_stamp(meta.get('public_preview_last_run')),
+            }
+            row = con.execute('SELECT MAX(crawled_at) FROM catalog_items WHERE active=1').fetchone()
+            collected['last_item'] = clean_stamp(row[0] if row else '')
+            collected['latest'] = max([v for v in collected.values() if v] or [''])
+            return {
                 'database': True,
                 'total': sum(r['count'] for r in sources),
                 'sources': sources,
                 'aihub_access': access,
+                'collected': collected,
                 'meta': meta,
-            })
+            }
         finally:
             con.close()
 
@@ -347,6 +388,10 @@ class Handler(SimpleHTTPRequestHandler):
         return {}
 
     def catalog_facets(self, query):
+        key = ('facets', one(query, 'source'), tuple(many(query, 'format', 12)), one(query, 'preview'))
+        return self._json(200, cached_agg(key, lambda: self._facets(query)))
+
+    def _facets(self, query):
         con = connect(DB_PATH, readonly=True)
         try:
             # 분야 칩은 다중 선택이므로 분야 조건을 뺀 집합에서 개수를 센다.
@@ -364,7 +409,7 @@ class Handler(SimpleHTTPRequestHandler):
                 'SELECT f.format value,COUNT(*) count FROM item_formats f JOIN catalog_items i ON i.uid=f.uid '
                 'WHERE ' + ' AND '.join(fwhere) + ' GROUP BY f.format ORDER BY count DESC,f.format LIMIT 40', fargs
             )]
-            return self._json(200, {'fields': fields, 'formats': formats})
+            return {'fields': fields, 'formats': formats}
         finally:
             con.close()
 
@@ -424,16 +469,37 @@ class Handler(SimpleHTTPRequestHandler):
         return self._json(200, result)
 
 
+def make_servers():
+    """localhost 가 IPv6(::1)로 먼저 해석되면 IPv4 전용 바인딩에서는 요청마다
+    수 초씩 지연된다. 루프백 IPv4·IPv6 양쪽에서 받도록 두 개를 띄운다."""
+    servers = []
+    for family, host in ((socket.AF_INET, '127.0.0.1'), (socket.AF_INET6, '::1')):
+        try:
+            klass = type('Srv', (ThreadingHTTPServer,), {'address_family': family})
+            servers.append(klass((host, PORT), Handler))
+        except OSError as e:
+            print('  %s 바인딩 건너뜀: %s' % (host, e), flush=True)
+    return servers
+
+
 if __name__ == '__main__':
     prepare_catalog()
-    srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
+    servers = make_servers()
+    if not servers:
+        print('포트 %d 를 열지 못했습니다. 이미 실행 중인지 확인하세요.' % PORT)
+        sys.exit(1)
     url = 'http://localhost:%d/' % PORT
     print('통합 데이터 카탈로그: %s   (종료: Ctrl+C 또는 창 닫기)' % url, flush=True)
     print('내 데이터셋 저장 위치: %s' % MY_PATH, flush=True)
     print('AI 설정 저장 위치: %s (git 제외)' % ai_service.SETTINGS_PATH, flush=True)
     if '--no-browser' not in sys.argv:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
+    for extra in servers[1:]:
+        threading.Thread(target=extra.serve_forever, daemon=True).start()
     try:
-        srv.serve_forever()
+        servers[0].serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        for srv in servers:
+            srv.shutdown()

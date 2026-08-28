@@ -23,6 +23,7 @@ from catalog_db import DATA_DIR, DB_PATH, connect, decode_json, init_db, set_met
 SNAP_DIR = os.path.join(DATA_DIR, "snapshot")
 MANIFEST = os.path.join(SNAP_DIR, "manifest.json")
 PART_LIMIT = 38 * 1024 * 1024  # 파트당 압축 후 목표 상한(깃허브 권고 50MB 이하)
+# 미리보기 행까지 담으므로 파트가 여러 개로 나뉜다.
 
 # 스냅샷에 담는 컬럼(원본 HTML/미리보기 본문 제외)
 COLUMNS = [
@@ -55,16 +56,28 @@ def trim_detail(source: str, detail: dict) -> dict:
     return out
 
 
+# 미리보기는 행을 자르지 않고 그대로 담는다(실측 최대 183행).
+# 아래 값은 비정상 데이터를 막기 위한 안전장치일 뿐 실제로는 걸리지 않는다.
+PREVIEW_ROW_LIMIT = 1000
+PREVIEW_CELL_LIMIT = 20000
+
+
 def trim_preview(preview: dict) -> dict:
-    """미리보기는 컬럼명만 남긴다(본문 행은 재수집 가능하고 용량이 매우 크다)."""
+    """미리보기(컬럼명 + 샘플 행)를 그대로 담는다."""
     if not preview or not preview.get("headers"):
         return {}
-    out = {"headers": preview["headers"][:200], "rows": []}
+    out = {"headers": preview["headers"][:500]}
+    rows = preview.get("rows") or []
+    kept = []
+    for row in rows[:PREVIEW_ROW_LIMIT]:
+        kept.append([("" if c is None else str(c))[:PREVIEW_CELL_LIMIT] for c in row[:500]])
+    out["rows"] = kept
+    if len(rows) > len(kept):
+        out["rows_omitted"] = len(rows) - len(kept)
     if preview.get("note"):
-        out["note"] = str(preview["note"])[:300]
+        out["note"] = str(preview["note"])
     if preview.get("source"):
         out["source"] = preview["source"]
-    out["row_sample_dropped"] = len(preview.get("rows") or [])
     return out
 
 
@@ -121,7 +134,7 @@ def export() -> None:
         "count": written,
         "parts": parts,
         "crawl_meta": meta,
-        "note": "미리보기 본문 행과 원본 HTML은 용량 때문에 제외되어 있습니다. python crawl_data_go_kr.py --missing-previews 로 다시 채울 수 있습니다.",
+        "note": "catalog.db 전체(미리보기 샘플 행 포함)를 복원할 수 있는 스냅샷입니다. 원본 HTML 캐시(raw/)만 제외되어 있습니다.",
     }
     with open(MANIFEST, "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=1)
@@ -181,8 +194,9 @@ def restore(force: bool = False) -> int:
     con.commit()
     # 스냅샷에는 미리보기 컬럼명이 남아 있으므로 데이터 항목 색인을 다시 만든다.
     try:
-        from catalog_db import build_column_index
+        from catalog_db import build_column_index, build_search_index
         print("  데이터 항목 색인 %s건" % build_column_index(con, rebuild=True))
+        print("  검색 색인 %s건" % build_search_index(con, rebuild=True))
     except Exception as e:  # noqa
         print("  색인 생성 건너뜀: %r" % e)
     con.close()

@@ -1,8 +1,11 @@
 {
- "exported_at": "2026-08-28 01:50:09",
+ "exported_at": "2026-08-28 10:32:35",
  "count": 84933,
  "parts": [
-  "items-01.jsonl.gz"
+  "items-01.jsonl.gz",
+  "items-02.jsonl.gz",
+  "items-03.jsonl.gz",
+  "items-04.jsonl.gz"
  ],
  "crawl_meta": {
   "aihub_count": "975",
@@ -14,7 +17,10 @@
   "public_catalog_imported": "83593",
   "public_catalog_imported_at": "2026-08-27 16:09:38",
   "public_preview_progress": "{\"done\": 8437, \"target\": 8437, \"errors\": 0, \"remaining_seconds\": 0, \"updated_at\": \"2026-08-28 01:45:57\"}",
-  "public_preview_last_run": "2026-08-28 01:45:57"
+  "public_preview_last_run": "2026-08-28 01:45:57",
+  "column_index_built_at": "2026-08-28 09:20:24",
+  "column_index_count": "61661",
+  "search_index_built_at": "2026-08-28 10:27:21"
  },
- "note": "미리보기 본문 행과 원본 HTML은 용량 때문에 제외되어 있습니다. python crawl_data_go_kr.py --missing-previews 로 다시 채울 수 있습니다."
+ "note": "catalog.db 전체(미리보기 샘플 행 포함)를 복원할 수 있는 스냅샷입니다. 원본 HTML 캐시(raw/)만 제외되어 있습니다."
 }

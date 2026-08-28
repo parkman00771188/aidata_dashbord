@@ -252,6 +252,55 @@ def build_column_index(con: sqlite3.Connection, rebuild: bool = False) -> int:
     return len(rows)
 
 
+def build_search_index(con: sqlite3.Connection, rebuild: bool = False) -> int:
+    """검색 전용 슬림 테이블 + FTS5(trigram) 색인을 만든다.
+
+    catalog_items 행에는 상세·미리보기 JSON이 함께 들어 있어 스캔이 무겁다.
+    검색에 쓰는 텍스트만 뽑아 별도 테이블에 두고, 한국어 부분일치가 가능한
+    trigram 토크나이저로 색인하면 3글자 이상 키워드는 즉시(1ms 이하) 찾을 수 있다.
+    """
+    init_db(con)
+    exists = con.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type IN ('table','view') AND name='search_fts'"
+    ).fetchone()[0]
+    if exists and not rebuild:
+        have = con.execute("SELECT COUNT(*) FROM item_search").fetchone()[0]
+        if have:
+            return 0
+    con.executescript(
+        "DROP TABLE IF EXISTS search_fts;"
+        "DROP TABLE IF EXISTS item_search;"
+        "CREATE TABLE item_search (uid TEXT PRIMARY KEY, title_text TEXT NOT NULL DEFAULT '',"
+        " meta_text TEXT NOT NULL DEFAULT '', desc_text TEXT NOT NULL DEFAULT '');"
+    )
+    con.execute(
+        "INSERT INTO item_search(uid,title_text,meta_text,desc_text) "
+        "SELECT i.uid, i.title||' '||i.file_name, "
+        "COALESCE(i.keywords_json,'')||' '||COALESCE(i.organization,'')||' '||COALESCE(c.columns_text,''), "
+        "COALESCE(i.description,'') "
+        "FROM catalog_items i LEFT JOIN item_columns c ON c.uid=i.uid WHERE i.active=1"
+    )
+    try:
+        con.execute("CREATE VIRTUAL TABLE search_fts USING fts5(uid UNINDEXED, title_text, "
+                    "meta_text, desc_text, tokenize='trigram')")
+        con.execute("INSERT INTO search_fts(uid,title_text,meta_text,desc_text) "
+                    "SELECT uid,title_text,meta_text,desc_text FROM item_search")
+    except sqlite3.OperationalError as e:  # trigram 미지원 SQLite - 스캔 방식으로 동작
+        print("  FTS5 trigram 색인 생략(%s) - 검색은 스캔 방식으로 동작합니다" % e)
+    n = con.execute("SELECT COUNT(*) FROM item_search").fetchone()[0]
+    set_meta(con, "search_index_built_at", now())
+    con.commit()
+    return n
+
+
+def has_fts(con: sqlite3.Connection) -> bool:
+    try:
+        return bool(con.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name='search_fts'").fetchone()[0])
+    except sqlite3.Error:
+        return False
+
+
 def decode_json(value, fallback):
     try:
         return json.loads(value or "")

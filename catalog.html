@@ -58,6 +58,8 @@
   .btn.sm { height:32px; padding:0 10px; font-size:12px; }
   .btn:disabled { opacity:.55; cursor:default; }
   .flabel { font-size:12px; color:var(--muted); font-weight:700; margin-right:2px; }
+  .filters.my-mode #format, .filters.my-mode #preview { display:none; }
+  .filters.my-mode .filter-row + .filter-row { display:none; }
   .chips { display:flex; flex-wrap:wrap; gap:6px; }
   .chip { display:inline-flex; align-items:center; gap:5px; height:30px; padding:0 11px; border:1px solid #d5dce7; border-radius:9px; background:#fff; cursor:pointer; font-size:12.5px; color:#42506a; }
   .chip:hover { border-color:#9db4dd; background:#f8fbff; }
@@ -128,6 +130,18 @@
   .reco-item.on { background:var(--violet2); box-shadow:inset 3px 0 0 var(--violet); }
   .reco-item .t { font-weight:700; font-size:13px; line-height:1.35; padding-right:22px; }
   .reco-item .m { color:var(--muted); font-size:11px; margin-top:4px; display:flex; gap:8px; flex-wrap:wrap; }
+  .reco-item.pending { background:linear-gradient(90deg,var(--violet2),transparent 70%); box-shadow:inset 3px 0 0 var(--violet); }
+  .reco-item.pending .t { color:#4b3aa8; }
+  .reco-item .m .run { color:var(--violet); font-weight:700; }
+  .mini-spin { display:inline-block; width:10px; height:10px; margin-right:6px; vertical-align:-1px; border:2px solid #cabff2; border-top-color:var(--violet); border-radius:50%; animation:sp .8s linear infinite; }
+  .rc.pend { border-color:var(--violet2); background:linear-gradient(180deg,var(--violet2),var(--card) 60%); }
+  .pend-head { display:flex; gap:13px; align-items:flex-start; }
+  .pend-head .spin { width:20px; height:20px; border-width:3px; flex:0 0 auto; margin-top:2px; }
+  .pend-title { font-weight:750; font-size:16px; line-height:1.45; }
+  .pend-step { color:#5a4aa8; font-size:13px; margin-top:5px; }
+  .pend-bar { height:5px; border-radius:99px; background:#e6e0fb; overflow:hidden; margin-top:14px; }
+  .pend-bar i { display:block; height:100%; background:linear-gradient(90deg,var(--violet),#4f8cf0); border-radius:99px; transition:width .9s linear; }
+  .pend-note { margin-top:11px; font-size:12px; color:var(--muted); }
   .reco-item .del { position:absolute; right:8px; top:9px; border:0; background:none; color:#b6bfcd; cursor:pointer; font-size:15px; line-height:1; padding:2px 4px; border-radius:6px; }
   .reco-item .del:hover { color:var(--rose); background:#fff; }
   .ai-main { min-width:0; }
@@ -398,6 +412,7 @@
   let detail=null, detailTab='overview', loadToken=0;
   let MY={updated_at:null,items:{}}, saveTimer, toastTimer;
   let RECOS=[], activeReco=null, aiBusy=false, settings={has_key:false,model:''}, MODELS=[];
+  let pendingReco=null, pendingTimer=null;
 
   function notify(text){const el=$('#toast');el.textContent=text;el.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('on'),2200)}
   async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m)}return r.json()}
@@ -418,7 +433,10 @@
   function saveMy(){localStorage.setItem('catalog_my',JSON.stringify(MY));clearTimeout(saveTimer);saveTimer=setTimeout(async()=>{try{await post('/api/my',MY)}catch(e){}},250)}
 
   // ------------------------------------------------------------------ 목록
-  async function loadStats(){stats=await api('/api/catalog/stats');updateCounts();$('#statusDot').classList.toggle('ok',stats.database);$('#statusText').textContent=stats.database?'로컬 카탈로그 연결됨':'카탈로그 없음';const m=stats.meta||{};const stamp=m.public_list_crawled_at||m.aihub_crawled_at||'';$('#updated').innerHTML=`최근 목록 수집 <b>${esc(stamp||'–')}</b><br>공공데이터 미리보기 ${fmt(stats.sources.find(x=>x.source==='공공데이터포털')?.previews||0)}건 저장`;$('#aiCorpus').textContent=fmt(stats.total);renderKpis()}
+  async function loadStats(){stats=await api('/api/catalog/stats');updateCounts();$('#statusDot').classList.toggle('ok',stats.database);$('#statusText').textContent=stats.database?'로컬 카탈로그 연결됨':'카탈로그 없음';const c=stats.collected||{};const pub=stats.sources.find(x=>x.source==='공공데이터포털')||{};
+    const when=v=>v?esc(v.slice(0,16)):'–';
+    $('#updated').innerHTML=`데이터 기준 <b>${when(c.latest)}</b>`+
+      `<br><span title="공공데이터포털 목록/미리보기, AI Hub 각각의 수집 시각">공공 목록 ${when(c.public_list)} · 미리보기 ${when(c.public_preview)} (${fmt(pub.previews||0)}건) · AI Hub ${when(c.aihub)}</span>`;$('#aiCorpus').textContent=fmt(stats.total);renderKpis()}
   function renderKpis(){const pub=stats.sources.find(x=>x.source==='공공데이터포털')||{},ai=stats.sources.find(x=>x.source==='AI Hub')||{},acc=stats.aihub_access||{};const vals=state.source==='public'?
     [['파일데이터',pub.count,'현재 공개 목록'],['상세정보',pub.details,'기본·제공정보'],['미리보기',pub.previews,'수집 완료/없음'],['내 데이터',Object.keys(MY.items).length,'직접 담은 항목']]:state.source==='aihub'?
     [['AI 데이터셋',ai.count,'AI Hub 수집 목록'],['↓ 다운로드 가능',acc['다운로드'],'신청 후 내려받기'],['🔒 안심존',acc['안심존'],'열람만 가능'],['내 데이터',Object.keys(MY.items).length,'직접 담은 항목']]:
@@ -430,7 +448,12 @@
   function updateHero(){const map={all:['All data sources','모든 데이터를 한곳에서 찾기','AI Hub와 공공데이터포털 파일데이터를 분야별로 비교하고 상세 정보까지 확인합니다.'],aihub:['AI Hub','AI 학습데이터','AI Hub 데이터셋의 제공 방식(다운로드·안심존)과 메타데이터 구조, 구축 정보를 확인합니다.'],public:['Data.go.kr','공공데이터포털 파일데이터','분야·기관·파일 형식별로 찾고 기본정보와 데이터 미리보기를 확인합니다.'],my:['My collection','내 데이터','관심 있는 두 출처의 데이터를 한곳에 모아 관리합니다.'],ai:['AI recommendation','AI 데이터 추천','목적을 설명하면 수집된 카탈로그에서 필요한 데이터와 활용 방법을 찾아 드립니다.']};const v=map[state.source];
     $('#eyebrow').textContent=v[0];$('#pageTitle').textContent=v[1];$('#pageDesc').textContent=v[2];
     const ai=state.source==='ai';$('#viewAi').hidden=!ai;$('#viewList').hidden=ai;$('#askbar').style.display=ai?'none':'';
-    $('#filters').style.display=state.source==='my'?'none':'';if(!ai)renderKpis()}
+    // 내 데이터에서는 분야·형식 필터는 숨기되 검색창은 남긴다.
+    // (숨겨 두면 검색어가 걸려 있는 줄 모르고 "결과 없음"만 보게 된다)
+    $('#filters').style.display=ai?'none':'';
+    $('#filters').classList.toggle('my-mode',state.source==='my');
+    $('#q').placeholder=state.source==='my'?'담은 데이터 검색 (제목, 기관, 메모)':'데이터명, 설명, 키워드, 제공기관 검색';
+    if(!ai)renderKpis()}
   async function loadList(){const token=++loadToken;$('#panel').classList.add('loading');try{
       if(state.source==='my'){current=Object.values(MY.items);const terms=state.q.toLowerCase().split(/\s+/).filter(Boolean);current=current.filter(d=>terms.every(t=>JSON.stringify(d).toLowerCase().includes(t)));total=current.length;renderRows();renderPager();return}
       const data=await api('/api/catalog/list?'+params());if(token!==loadToken)return;current=data.items;total=data.total;renderRows();renderPager()}
@@ -449,8 +472,17 @@
       <td class="r">${d.downloads?fmt(d.downloads):'–'}</td>
       <td>${previewBadge(d)}</td></tr>`).join('');
     $('#empty').hidden=current.length>0;
+    if(!current.length)renderEmpty();
     const chosen=state.fields.length?` · 분야 ${state.fields.length}개 선택`:'';
     $('#listMeta').innerHTML=`<span>검색 결과 <b>${fmt(total)}</b>건${chosen}</span><span>페이지 <b>${fmt(state.page)}</b></span><span class="grow"></span><span>행을 누르면 상세정보가 열립니다</span>`}
+  function renderEmpty(){const q=state.q.trim();
+    const on=[q?`검색어 "${esc(q)}"`:'',state.fields.length?`분야 ${state.fields.length}개`:'',
+      state.format?`형식 ${esc(state.format)}`:'',state.preview?'미리보기 조건':''].filter(Boolean);
+    const where=state.source==='my'?'담은 데이터':'카탈로그';
+    $('#empty').innerHTML=`<b>${where} 중 조건에 맞는 것이 없습니다</b>`+
+      (on.length?`적용 중인 조건: ${on.join(' · ')}<br><button class="btn sm" id="emptyReset" style="margin-top:10px">조건 지우고 전체 보기</button>`
+       :(state.source==='my'?'전체 데이터셋 탭에서 ★ 를 눌러 담아 보세요.':'검색어나 필터를 바꿔 보세요.'));
+    const b=$('#emptyReset');if(b)b.onclick=()=>$('#reset').click()}
   function renderPager(){const pages=Math.max(1,Math.ceil(total/state.per)),p=Math.min(state.page,pages);if(p!==state.page)state.page=p;const nums=[...new Set([1,p-2,p-1,p,p+1,p+2,pages].filter(x=>x>=1&&x<=pages))].sort((a,b)=>a-b);let prev=0,html=`<span class="info">${fmt(total)}건 중 ${fmt(total?(p-1)*state.per+1:0)}–${fmt(Math.min(p*state.per,total))}</span><button data-page="${p-1}" ${p===1?'disabled':''}>‹</button>`;for(const n of nums){if(prev&&n>prev+1)html+='<span>…</span>';html+=`<button data-page="${n}" class="${n===p?'on':''}">${n}</button>`;prev=n}html+=`<button data-page="${p+1}" ${p===pages?'disabled':''}>›</button><select id="perPage">${[25,50,100,200].map(n=>`<option value="${n}" ${n===state.per?'selected':''}>${n}개씩</option>`).join('')}</select>`;$('#pager').innerHTML=html}
 
   // ------------------------------------------------------------------ 상세 드로어
@@ -506,11 +538,27 @@
   // ------------------------------------------------------------------ AI 추천
   function roleTone(role){return role==='핵심'?'download':role==='보조'?'public':'muted'}
   async function loadRecos(open){try{const d=await api('/api/recommendations');RECOS=d.items||[]}catch(e){RECOS=[]}
+    if(pendingReco)RECOS=[pendingReco,...RECOS];           // 진행 중인 요청은 목록에 계속 남긴다
     if(open&&!activeReco&&RECOS.length){activeReco=RECOS[0]}
     updateCounts();renderRecoList();if(open&&activeReco)renderReco()}
   function renderRecoList(){const el=$('#recoList');if(!RECOS.length){el.innerHTML='<div class="empty" style="padding:26px 16px">저장된 추천이 없습니다.<br>목적을 입력하면 자동 저장됩니다.</div>';return}
-    el.innerHTML=RECOS.map(r=>`<div class="reco-item ${activeReco&&activeReco.id===r.id?'on':''}" data-reco="${esc(r.id)}"><button class="del" data-del="${esc(r.id)}" title="삭제">×</button><div class="t">${esc(r.title||r.query)}</div><div class="m"><span>${esc((r.created_at||'').slice(0,16))}</span><span>데이터 ${fmt((r.datasets||[]).length)}건</span></div></div>`).join('')}
+    el.innerHTML=RECOS.map(r=>`<div class="reco-item ${activeReco&&activeReco.id===r.id?'on':''} ${r.pending?'pending':''}" data-reco="${esc(r.id)}">
+      ${r.pending?'':`<button class="del" data-del="${esc(r.id)}" title="삭제">×</button>`}
+      <div class="t">${r.pending?'<span class="mini-spin"></span>':''}${esc(r.title||r.query)}</div>
+      <div class="m">${r.pending
+        ?`<span class="run">추천 만드는 중… ${fmt(r.secs||0)}초</span>`
+        :`<span>${esc((r.created_at||'').slice(0,16))}</span><span>데이터 ${fmt((r.datasets||[]).length)}건</span>`}</div>
+    </div>`).join('')}
+  function loadingCard(r){const secs=r.secs||0;
+    const step=secs<4?'질문에서 검색어를 뽑는 중':secs<12?`카탈로그 ${fmt(stats.total)}건에서 후보를 찾는 중`:'찾은 후보로 추천을 만드는 중';
+    return `<div class="rc pend"><div class="pend-head"><span class="spin"></span><div>
+        <div class="pend-title">${esc(r.query)}</div>
+        <div class="pend-step">${step}… <b>${fmt(secs)}초</b> 경과 · 보통 15~40초 걸립니다</div>
+      </div></div>
+      <div class="pend-bar"><i style="width:${Math.min(95,secs*4)}%"></i></div>
+      <div class="pend-note">완료되면 왼쪽 <b>저장된 추천</b>에 자동으로 저장됩니다. 다른 탭으로 이동해도 계속 진행됩니다.</div></div>`}
   function renderReco(){const r=activeReco;if(!r){$('#aiOut').innerHTML='';return}
+    if(r.pending){$('#aiOut').innerHTML=loadingCard(r);renderRecoList();return}
     const groups=[['핵심','핵심 데이터'],['보조','보조 데이터'],['참고','참고 데이터']];
     const ds=r.datasets||[];
     const dsHtml=groups.map(([role,label])=>{const rows=ds.filter(x=>(x.role||'참고')===role);if(!rows.length)return '';
@@ -586,11 +634,27 @@
   async function runRecommend(){if(aiBusy)return;const q=$('#aiInput').value.trim();
     if(q.length<3){notify('필요한 데이터를 조금 더 자세히 적어 주세요');return}
     if(!settings.has_key){notify('먼저 오른쪽 위 설정에서 Gemini API 키를 입력해 주세요');openSettings();return}
-    aiBusy=true;$('#aiSubmit').disabled=true;activeReco=null;
-    $('#aiOut').innerHTML=`<div class="ai-status"><span class="spin"></span><span>카탈로그 ${fmt(stats.total)}건에서 후보를 찾고 ${esc(settings.model)} 모델로 추천을 만드는 중입니다… (10~60초)</span></div>`;
-    try{const r=await post('/api/ai/recommend',{query:q});activeReco=r;RECOS=[r,...RECOS.filter(x=>x.id!==r.id)];updateCounts();renderReco();notify('추천을 저장했습니다')}
-    catch(e){$('#aiOut').innerHTML=`<div class="err"><b>추천을 만들지 못했습니다</b><br>${esc(e.message)}</div>`}
-    finally{aiBusy=false;$('#aiSubmit').disabled=false}}
+    aiBusy=true;$('#aiSubmit').disabled=true;
+    // 누르는 즉시 목록에 자리를 만들고 진행 상황을 보여준다
+    const started=Date.now();
+    pendingReco={id:'pending-'+started,query:q,title:q.length>26?q.slice(0,26)+'…':q,pending:true,secs:0};
+    activeReco=pendingReco;RECOS=[pendingReco,...RECOS.filter(x=>!x.pending)];
+    updateCounts();renderReco();
+    clearInterval(pendingTimer);
+    pendingTimer=setInterval(()=>{if(!pendingReco)return;pendingReco.secs=Math.round((Date.now()-started)/1000);
+      if(activeReco===pendingReco)renderReco();else renderRecoList()},1000);
+    try{const r=await post('/api/ai/recommend',{query:q});
+      const wasActive=activeReco===pendingReco;
+      RECOS=[r,...RECOS.filter(x=>x.id!==r.id&&!x.pending)];
+      if(wasActive)activeReco=r;
+      notify('추천을 저장했습니다')}
+    catch(e){
+      const wasActive=activeReco===pendingReco;
+      RECOS=RECOS.filter(x=>!x.pending);
+      if(wasActive){activeReco=null;$('#aiOut').innerHTML=`<div class="err"><b>추천을 만들지 못했습니다</b><br>${esc(e.message)}</div>`}
+      notify('추천 실패: '+e.message)}
+    finally{clearInterval(pendingTimer);pendingReco=null;aiBusy=false;$('#aiSubmit').disabled=false;
+      updateCounts();if(activeReco&&!activeReco.pending)renderReco();else renderRecoList()}}
 
   // ------------------------------------------------------------------ 설정
   async function loadSettings(){try{settings=await api('/api/settings')}catch(e){settings={has_key:false,model:''}}
@@ -624,7 +688,8 @@
   $('#fieldChips').onclick=e=>{const b=e.target.closest('[data-field]');if(!b)return;const v=b.dataset.field;
     if(!v)state.fields=[];else{const i=state.fields.indexOf(v);i<0?state.fields.push(v):state.fields.splice(i,1)}
     state.page=1;renderFieldChips();loadList()};
-  $('#reset').onclick=()=>{state.q=state.format=state.preview='';state.fields=[];$('#q').value='';$('#format').value='';$('#preview').value='';state.page=1;renderFieldChips();loadList()};
+  $('#reset').onclick=()=>{state.q=state.format=state.preview='';state.fields=[];$('#q').value='';$('#format').value='';$('#preview').value='';state.page=1;
+    if(state.source!=='my')renderFieldChips();loadList()};
   $('#sourceTabs').onclick=e=>{const b=e.target.closest('button[data-source]');if(b)changeSource(b.dataset.source)};
   $('#panel').onclick=e=>{const star=e.target.closest('[data-pick]');if(star){e.stopPropagation();const d=current.find(x=>x.uid===star.dataset.pick);if(d)togglePick(d);return}const tr=e.target.closest('tr[data-uid]');if(tr)openDetail(tr.dataset.uid)};
   $('#panel').querySelector('thead').onclick=e=>{const th=e.target.closest('[data-sort]');if(!th)return;const k=th.dataset.sort;if(state.sort===k)state.dir=state.dir==='asc'?'desc':'asc';else{state.sort=k;state.dir=['modified_at','row_count','downloads','views'].includes(k)?'desc':'asc'}state.page=1;loadList()};
@@ -663,9 +728,11 @@
     await loadMy();await loadSettings();await loadStats();await loadFacets();await loadList();loadRecos();
     const qs=new URLSearchParams(location.search);
     if(qs.get('settings'))openSettings();
+    const ask=qs.get('ask');                       // ?ask=질문 으로 바로 추천 실행
+    if(ask){await changeSource('ai');$('#aiInput').value=ask;runRecommend();return}
     const rid=qs.get('reco');
     if(rid){await loadRecos();activeReco=RECOS.find(x=>x.id===rid)||null;await changeSource('ai');if(activeReco)renderReco()}
-    else if(qs.get('view')==='ai')await changeSource('ai');
+    else if(['all','aihub','public','my','ai'].includes(qs.get('view')||''))await changeSource(qs.get('view'));
     const uid=qs.get('uid');if(uid)openDetail(uid);
   }catch(e){$('#statusText').textContent='카탈로그 연결 실패';
     $('#rows').innerHTML=`<tr><td colspan="11"><div class="empty"><b>서버를 통해 열어 주세요</b>대시보드 실행.bat 또는 python serve.py를 실행해야 합니다.<br>${esc(e.message)}</div></td></tr>`}
