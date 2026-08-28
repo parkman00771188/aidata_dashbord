@@ -486,7 +486,13 @@ RECO_PROMPT = """[사용자 목적]
       "items": ["실제로 쓸 데이터항목 3~6개. 후보의 '데이터항목'에 있는 이름을 그대로 적는다"],
       "join_key": "다른 데이터와 연결할 때 쓸 공통 항목(없으면 빈 문자열)"}}
   ],
-  "pipeline": [{{"step": "단계 이름", "detail": "그 단계에서 할 일"}}],
+  "pipeline": [
+    {{"step": "단계 이름(6자 내외)",
+      "uses": ["이 단계에서 쓰는 데이터의 uid (후보 목록에 있는 것만, 없으면 빈 배열)"],
+      "detail": "이 데이터의 어떤 항목을 어떻게 쓰는지 2~3문장으로 구체적으로. 결합·가공 방법과 기준을 적는다",
+      "output": "이 단계가 만들어 내는 결과물(표·지표·모델 등)을 한 문장으로"}}
+  ],
+  "outcome": "위 흐름을 끝냈을 때 실제로 무엇을 할 수 있게 되는지 2~3문장. 어떤 질문에 답할 수 있고 무엇을 만들 수 있는지 구체적으로",
   "cautions": ["데이터 활용 시 유의사항 2~4개"],
   "missing": ["후보에 없어서 추가로 확보해야 할 데이터 1~3개"]
 }}
@@ -497,8 +503,25 @@ RECO_PROMPT = """[사용자 목적]
   항목 정보가 없는 후보(항목 정보 없음)는 items 를 비우고 why 에 "항목 미확인"이라고 적는다.
 - 데이터항목을 보고 목적에 쓸 값이 없다고 판단되면 그 후보는 아예 고르지 않는다.
 - features 의 data_need 도 가능하면 후보들의 실제 데이터항목 이름으로 적는다.
-- features 는 3~6개, pipeline 은 3~6단계로 만든다.
+- pipeline 의 detail 은 "A 데이터의 X 항목과 B 데이터의 Y 항목을 Z 기준으로 결합한다" 처럼
+  실제 데이터명과 항목명을 넣어 쓴다. 일반론("전처리한다", "모델을 학습한다")만 쓰지 않는다.
+- 설명 문장에서는 uid 대신 사람이 읽는 데이터명을 쓴다. uid 는 uses 와 datasets 에만 넣는다.
+- pipeline 의 uses 에는 datasets 에 넣은 uid 만 쓴다.
+- features 는 3~6개, pipeline 은 4~6단계로 만든다.
 - 후보에 마땅한 데이터가 없으면 datasets 를 비우고 missing 에 이유를 적는다."""
+
+
+UID_RE = re.compile(r"(?:aihub|public):[0-9]+")
+
+
+def humanize(text: str, by_uid: dict) -> str:
+    """설명 문장에 남은 내부 uid 를 사람이 읽는 데이터명으로 바꾼다."""
+    if not text:
+        return ""
+    def swap(m):
+        title = (by_uid.get(m.group(0)) or {}).get("title")
+        return "'%s'" % title if title else m.group(0)
+    return UID_RE.sub(swap, text)
 
 
 def columns_of(row) -> list:
@@ -588,7 +611,8 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
             "modified_at": row.get("modified_at") or "", "update_cycle": row.get("update_cycle") or "",
             "access": acc,
             "role": str(item.get("role") or "참고")[:6],
-            "why": str(item.get("why") or ""), "usage": str(item.get("usage") or ""),
+            "why": humanize(str(item.get("why") or ""), by_uid),
+            "usage": humanize(str(item.get("usage") or ""), by_uid),
             "items": [str(x) for x in (item.get("items") or [])][:8],
             "join_key": str(item.get("join_key") or ""),
             "columns": columns_of(row)[:40],
@@ -604,11 +628,21 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
         "goal": str(result.get("goal") or plan.get("goal") or ""),
         "keywords": keywords,
         "fields": fields,
-        "features": [{"name": str(f.get("name") or ""), "detail": str(f.get("detail") or ""),
-                      "data_need": str(f.get("data_need") or "")} for f in (result.get("features") or [])][:8],
+        "features": [{"name": str(f.get("name") or ""),
+                      "detail": humanize(str(f.get("detail") or ""), by_uid),
+                      "data_need": humanize(str(f.get("data_need") or ""), by_uid)}
+                     for f in (result.get("features") or [])][:8],
         "datasets": datasets,
-        "pipeline": [{"step": str(p.get("step") or ""), "detail": str(p.get("detail") or "")}
-                     for p in (result.get("pipeline") or [])][:8],
+        "pipeline": [{
+            "step": str(p.get("step") or ""),
+            "detail": humanize(str(p.get("detail") or ""), by_uid),
+            "output": humanize(str(p.get("output") or ""), by_uid),
+            # 흐름에서 쓰는 데이터는 실제 추천 목록에 있는 것만 남기고 제목을 붙여 준다
+            "uses": [{"uid": u, "title": (by_uid.get(u) or {}).get("title", ""),
+                      "source": (by_uid.get(u) or {}).get("source", "")}
+                     for u in (p.get("uses") or []) if u in by_uid][:6],
+        } for p in (result.get("pipeline") or [])][:8],
+        "outcome": humanize(str(result.get("outcome") or ""), by_uid),
         "cautions": [str(c) for c in (result.get("cautions") or [])][:6],
         "missing": [str(m) for m in (result.get("missing") or [])][:5],
         "candidate_count": len(candidates),

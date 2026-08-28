@@ -181,7 +181,16 @@
   .step:first-child { border-top:0; padding-top:0; }
   .step .no { width:26px; height:26px; border-radius:50%; background:#eef4ff; color:var(--blue); display:grid; place-items:center; font-size:12px; font-weight:800; }
   .step .sn { font-weight:730; }
-  .step .sd { color:#4d5b72; margin-top:2px; }
+  .step .sd { color:#4d5b72; margin-top:3px; line-height:1.7; }
+  .step .uses { display:flex; flex-wrap:wrap; gap:5px; align-items:center; margin-top:7px; }
+  .step .uses b { font-size:11px; color:var(--muted); font-weight:700; }
+  .usechip { border:1px solid var(--line); background:#f7faff; color:var(--blue); border-radius:7px; padding:3px 9px; font-size:11.5px; cursor:pointer; max-width:270px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .usechip:hover { border-color:var(--blue); background:var(--blue2); }
+  .step .outp { margin-top:7px; font-size:12.5px; color:#2f5c46; background:var(--green2); border-radius:8px; padding:6px 10px; }
+  .step .outp b { color:var(--green); font-size:11px; margin-right:5px; }
+  .outcome { margin-top:16px; padding:14px 16px; border-radius:12px; background:linear-gradient(135deg,var(--violet2),var(--blue2)); }
+  .outcome b { display:block; font-size:12px; color:var(--violet); margin-bottom:5px; }
+  .outcome div { line-height:1.75; color:#33405a; }
   .bullets { margin:0; padding-left:20px; color:#41506a; line-height:1.8; }
   .usage-line { margin:14px 4px 0; font-size:11.5px; line-height:1.7; color:var(--muted); opacity:.55; }
   .usage-line:hover { opacity:.9; }
@@ -509,7 +518,14 @@
       </div>
       ${(r.features||[]).length?`<div class="rc"><h3>필요한 기능 <span class="n">${r.features.length}개</span></h3>${r.features.map((f,i)=>`<div class="feature"><div class="no">${i+1}</div><div><div class="fn">${esc(f.name)}</div><div class="fd">${esc(f.detail||'')}</div>${f.data_need?`<div class="need"><b>필요 데이터</b> · ${esc(f.data_need)}</div>`:''}</div></div>`).join('')}</div>`:''}
       <div class="rc"><h3>추천 데이터 <span class="n">${fmt(ds.length)}건</span></h3>${dsHtml||'<div class="notice">조건에 맞는 데이터를 찾지 못했습니다.</div>'}</div>
-      ${(r.pipeline||[]).length?`<div class="rc"><h3>활용 흐름</h3><div class="steps">${r.pipeline.map((p,i)=>`<div class="step"><div class="no">${i+1}</div><div><div class="sn">${esc(p.step)}</div><div class="sd">${esc(p.detail||'')}</div></div></div>`).join('')}</div></div>`:''}
+      ${(r.pipeline||[]).length?`<div class="rc"><h3>활용 흐름 <span class="n">${r.pipeline.length}단계</span></h3><div class="steps">${r.pipeline.map((p,i)=>`
+        <div class="step"><div class="no">${i+1}</div><div>
+          <div class="sn">${esc(p.step)}</div>
+          <div class="sd">${esc(p.detail||'')}</div>
+          ${(p.uses||[]).length?`<div class="uses"><b>사용 데이터</b>${p.uses.map(u=>`<button class="usechip" data-open="${esc(u.uid)}" title="상세 보기">${esc(u.title)}</button>`).join('')}</div>`:''}
+          ${p.output?`<div class="outp"><b>결과</b> ${esc(p.output)}</div>`:''}
+        </div></div>`).join('')}</div>
+        ${r.outcome?`<div class="outcome"><b>이렇게 하면 무엇을 할 수 있나</b><div>${esc(r.outcome)}</div></div>`:''}</div>`:''}
       ${(r.cautions||[]).length?`<div class="rc"><h3>유의사항</h3><ul class="bullets">${r.cautions.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`:''}
       ${(r.missing||[]).length?`<div class="rc"><h3>추가로 확보하면 좋은 데이터</h3><ul class="bullets">${r.missing.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`:''}
       ${usageLine(r)}`;
