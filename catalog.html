@@ -7,6 +7,7 @@
 <style>
   :root { --bg:#f5f7fb; --card:#fff; --ink:#172033; --muted:#68758a; --line:#dde3ec; --blue:#235fd8; --blue2:#eaf1ff; --green:#16845b; --green2:#e8f7f0; --violet:#6b4bd8; --violet2:#f0ecff; --amber:#a65d08; --amber2:#fff3df; --rose:#c0344d; --rose2:#ffecef; --shadow:0 18px 44px rgba(35,52,84,.13); }
   * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
   html,body { margin:0; min-height:100%; background:var(--bg); color:var(--ink); font:14px/1.5 Inter,"Pretendard","Noto Sans KR",system-ui,sans-serif; }
   button,input,select,textarea { font:inherit; }
   button { color:inherit; }
@@ -280,13 +281,27 @@
   .field .inline-check { display:flex; align-items:center; gap:6px; margin-top:9px; font-weight:500; font-size:12.5px; color:var(--muted); cursor:pointer; }
   .field .inline-check input { width:auto; height:auto; }
   .field select optgroup { font-weight:700; color:var(--ink); }
-  .admin-state { font-size:12.5px; padding:10px 12px; border-radius:10px; margin-bottom:12px; line-height:1.6; }
+  #adminLogin { display:grid; gap:16px; }
+  #adminLogin .btn.primary { width:100%; height:44px; margin-top:2px; }
+  #adminPanel { display:grid; gap:14px; }
+  .ai-toggle { display:flex; align-items:center; gap:14px; padding:14px 16px; border:1px solid var(--line); border-radius:12px; background:#fbfcfe; }
+  .ai-toggle-text { flex:1; min-width:0; }
+  .ai-toggle-text b { display:block; font-size:14px; }
+  .ai-toggle-text span { display:block; font-size:12px; color:var(--muted); margin-top:3px; line-height:1.5; }
+  .switch { position:relative; flex:0 0 auto; width:48px; height:28px; cursor:pointer; }
+  .switch input { position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; }
+  .switch i { position:absolute; inset:0; border-radius:99px; background:#cfd6e0; transition:.18s; pointer-events:none; }
+  .switch i:after { content:""; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:#fff; transition:.18s; box-shadow:0 1px 3px rgba(0,0,0,.25); }
+  .switch input:checked + i { background:var(--green); }
+  .switch input:checked + i:after { transform:translateX(20px); }
+  .switch input:focus-visible + i { box-shadow:0 0 0 3px var(--green2); }
+  .admin-actions { display:flex; gap:8px; justify-content:space-between; padding-top:12px; border-top:1px dashed var(--line); }
+  .admin-actions .btn { flex:0 0 auto; }
+  .admin-state { font-size:12.5px; padding:11px 13px; border-radius:10px; margin-bottom:14px; line-height:1.65; }
   .admin-state.on { background:var(--green2); color:var(--green); }
   .admin-state.off { background:var(--card-2); color:var(--muted); }
   .admin-state.warn { background:var(--lock-bg); color:var(--lock); }
-  .admin-actions { display:flex; gap:8px; }
-  .admin-actions .btn { flex:1; }
-  #adminBox { border-bottom:1px dashed var(--line); padding-bottom:16px; }
+  #adminBox { border-bottom:1px solid var(--line); padding-bottom:18px; margin-bottom:2px; }
   .modal footer { padding:14px 22px 20px; display:flex; gap:8px; justify-content:flex-end; }
   .toast { position:fixed; z-index:60; left:50%; bottom:88px; transform:translate(-50%,18px); opacity:0; color:#fff; background:#1f2b3d; padding:10px 16px; border-radius:10px; transition:.2s; pointer-events:none; max-width:90vw; }
   .toast.on { opacity:1; transform:translate(-50%,0); }
@@ -388,14 +403,20 @@
     <div id="adminBox" hidden>
       <div class="admin-state" id="adminState"></div>
       <div id="adminLogin" hidden>
-        <div class="field"><label for="admUser">관리자 아이디</label><input id="admUser" autocomplete="username" placeholder="admin"></div>
-        <div class="field"><label for="admPass">비밀번호</label><input id="admPass" type="password" autocomplete="current-password" placeholder="비밀번호"></div>
-        <button class="btn primary" id="admLogin" style="width:100%">로그인</button>
+        <div class="field"><label for="admUser">관리자 아이디</label><input id="admUser" autocomplete="username" placeholder="아이디를 입력하세요"></div>
+        <div class="field"><label for="admPass">비밀번호</label><input id="admPass" type="password" autocomplete="current-password" placeholder="비밀번호를 입력하세요"></div>
+        <button class="btn primary" id="admLogin">로그인</button>
       </div>
       <div id="adminPanel" hidden>
-        <label class="inline-check" style="margin:0 0 10px"><input type="checkbox" id="aiEnabled"> <b>AI 추천 기능 켜기</b> — 방문자가 내 Gemini 키로 추천을 받을 수 있습니다</label>
+        <div class="ai-toggle">
+          <div class="ai-toggle-text">
+            <b>AI 추천 기능</b>
+            <span>켜면 방문자가 사이트에 등록된 키로 추천을 받습니다</span>
+          </div>
+          <label class="switch"><input type="checkbox" id="aiEnabled"><i></i></label>
+        </div>
         <div class="admin-actions">
-          <button class="btn" id="admLogout">로그아웃</button>
+          <button class="btn ghost" id="admLogout">로그아웃</button>
           <button class="btn danger" id="admClearKey">저장된 키 삭제</button>
         </div>
       </div>
@@ -403,7 +424,7 @@
     <div class="field">
       <label for="setKey">Gemini API 키</label>
       <input id="setKey" type="password" placeholder="AIza..." autocomplete="off">
-      <div class="help">Google AI Studio에서 발급합니다. 키는 이 PC의 <code>data/settings.json</code>에만 저장되고 깃에는 올라가지 않습니다.</div>
+      <div class="help" id="keyHelp">Google AI Studio에서 발급합니다. 키는 이 PC의 <code>data/settings.json</code>에만 저장되고 깃에는 올라가지 않습니다.</div>
     </div>
     <div class="field">
       <label for="setModel">모델</label>
@@ -700,8 +721,14 @@
     const admin=!!settings.admin;
     $('#adminLogin').hidden=admin;$('#adminPanel').hidden=!admin;
     $('#setKey').closest('.field').hidden=!admin;
-    $('#setModel').closest('.field').hidden=!admin;
+    // 모델은 로그인 전에도 무엇이 쓰이는지 보이게 하고, 바꾸는 것만 관리자로 제한한다
+    $('#setModel').closest('.field').hidden=false;
+    $('#setModel').disabled=!admin;
+    $('#setCustomOn').closest('.inline-check').hidden=!admin;
+    $('#setCustom').hidden=!admin||!$('#setCustomOn').checked;
     $('#setSave').hidden=!admin;$('#setReload').hidden=!admin;
+    $('#keyHelp').innerHTML='Google AI Studio에서 발급합니다. 키는 <b>Cloudflare KV</b>에 저장되며 '
+      +'브라우저로는 끝 4자리만 마스킹해 전달됩니다.';
     $('#aiEnabled').checked=!!settings.enabled;
     const box=$('#adminState');
     if(admin){box.className='admin-state '+(settings.enabled?'on':'off');

@@ -1,10 +1,16 @@
 import { json, activeKey, readSettings, DEFAULT_MODEL } from '../../_lib.js';
 
+/* 키가 없을 때만 쓰는 기본 목록. 키가 있으면 계정의 실제 모델로 완전히 대체된다. */
 const FALLBACK = [
-  { id: 'gemini-flash-latest', label: 'Gemini Flash (항상 최신)', family: '항상 최신 (별칭)' },
-  { id: 'gemini-pro-latest', label: 'Gemini Pro (항상 최신)', family: '항상 최신 (별칭)' },
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', family: 'Gemini 2.5' },
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', family: 'Gemini 2.5' },
+  { id: 'gemini-flash-latest', label: 'Gemini Flash (항상 최신)', family: '항상 최신 (별칭)',
+    note: '구글이 최신 Flash 모델로 자동 연결하는 별칭' },
+  { id: 'gemini-pro-latest', label: 'Gemini Pro (항상 최신)', family: '항상 최신 (별칭)',
+    note: '구글이 최신 Pro 모델로 자동 연결하는 별칭' },
+  { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro Preview', family: 'Gemini 3',
+    note: '최신 세대 · 가장 정확, 느리고 비쌈' },
+  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', family: 'Gemini 2.5', note: '정확도 우선' },
+  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', family: 'Gemini 2.5', note: '속도·비용 균형' },
+  { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', family: 'Gemini 2.5', note: '가장 빠르고 저렴' },
 ];
 const SKIP = ['embedding', 'aqa', 'imagen', 'veo', '-tts', 'image-generation', 'native-audio',
   '-live', 'computer-use', '-image', 'nano-banana', 'lyria', 'transcribe', 'robotics', 'antigravity'];

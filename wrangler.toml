@@ -1,17 +1,17 @@
 # Cloudflare Pages 설정
 #
-# 배포(로그인 후 아무 데서나):
-#   npx wrangler login                 <- 브라우저에서 한 번만 승인
-#   python build_static.py             <- site/ 생성
-#   npx wrangler pages deploy site --project-name find-publicdata
+# 배포:
+#   python build_static.py
+#   npx wrangler pages deploy site --project-name publicdata-finder
 #
 # 로컬 미리보기:
 #   npx wrangler pages dev site --kv SETTINGS
 #
-name = "find-publicdata"
+name = "publicdata-finder"
 pages_build_output_dir = "site"
 compatibility_date = "2026-01-01"
 
-# AI 설정(키·on/off·모델)과 키워드 캐시는 KV 에 저장한다.
-# 대시보드 → 프로젝트 → Settings → Bindings 에서
-# KV namespace 를 변수명 SETTINGS 로 연결하면 된다.
+# AI 설정(키·on/off·모델)과 키워드 캐시 저장소
+[[kv_namespaces]]
+binding = "SETTINGS"
+id = "f0575970a72f484eac85a8ae4a8d394b"
