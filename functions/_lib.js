@@ -146,14 +146,55 @@ export async function geminiJSON(key, model, system, prompt, temperature = 0.2) 
   };
 }
 
-export function parseJSON(text) {
+/* 길이 제한으로 중간에 끊긴 JSON 을 닫아서 살린다.
+ * Gemini 가 출력 한도에 걸리면 문자열이나 배열이 열린 채로 끝난다.
+ * 앞부분(제목·목표·추천 데이터)은 멀쩡하므로 열려 있는 괄호를 닫아 복구한다. */
+function repairJSON(text) {
+  const start = text.indexOf('{');
+  if (start < 0) return null;
+  const t = text.slice(start);
+  const stack = [];
+  const cuts = [];        // [자를 위치, 그 시점의 열린 괄호] - 값이 온전히 끝난 지점들
+  let inStr = false, esc = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') { inStr = false; cuts.push([i + 1, stack.slice()]); }
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{' || ch === '[') stack.push(ch === '{' ? '}' : ']');
+    else if (ch === '}' || ch === ']') { stack.pop(); cuts.push([i + 1, stack.slice()]); }
+    else if (/[0-9truefalsn]/.test(ch)) cuts.push([i + 1, stack.slice()]);
+  }
+  // 뒤에서부터 잘라 닫아 본다. 값 자리가 아니라 키 뒤에서 잘리면 파싱이 실패하므로
+  // 성공할 때까지 한 칸씩 앞으로 물러난다.
+  for (const [pos, open] of cuts.reverse().slice(0, 200)) {
+    if (!open.length) continue;
+    const body = t.slice(0, pos).replace(/\s+$/, '').replace(/,$/, '');
+    try {
+      const v = JSON.parse(body + open.slice().reverse().join(''));
+      if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length) return v;
+    } catch (e) { /* 더 앞으로 물러난다 */ }
+  }
+  return null;
+}
+
+export function parseJSON(text, reason) {
   let t = String(text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
   try { return JSON.parse(t); } catch (e) {}
   const a = t.indexOf('{'), b = t.lastIndexOf('}');
   if (a >= 0 && b > a) {
     try { return JSON.parse(t.slice(a, b + 1)); } catch (e) {}
   }
-  throw new Error('Gemini 응답을 JSON 으로 해석하지 못했습니다.');
+  const repaired = repairJSON(t);            // 끊긴 응답을 닫아서 살려 본다
+  if (repaired) return repaired;
+  if (reason === 'MAX_TOKENS') {
+    throw new Error('응답이 최대 길이를 넘어 잘렸습니다. 질문을 조금 줄이거나 다른 모델을 선택해 주세요.');
+  }
+  throw new Error('Gemini 응답을 JSON 으로 해석하지 못했습니다' + (reason ? ' (' + reason + ')' : '') + '.');
 }
 
 // 100만 토큰당 USD (ai_service.PRICING 과 같은 표)

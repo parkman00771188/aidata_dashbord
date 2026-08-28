@@ -244,7 +244,8 @@ def list_models(key: str = "") -> list:
     return unique
 
 
-def _extract_text(data: dict) -> str:
+def _extract_text(data: dict):
+    """(본문, finishReason) 을 돌려준다."""
     cands = data.get("candidates") or []
     if not cands:
         block = (data.get("promptFeedback") or {}).get("blockReason")
@@ -256,10 +257,53 @@ def _extract_text(data: dict) -> str:
         if reason == "MAX_TOKENS":
             raise AiError("응답이 최대 길이를 초과했습니다. 더 짧게 질문하거나 다른 모델을 선택해 주세요.")
         raise AiError("Gemini 응답이 비어 있습니다%s." % (" (%s)" % reason if reason else ""))
-    return text
+    return text, cands[0].get("finishReason", "")
 
 
-def _parse_json(text: str):
+def _repair_json(text: str):
+    """길이 제한으로 중간에 끊긴 JSON 을 닫아서 살린다.
+
+    Gemini 가 출력 한도에 걸리면 문자열이나 배열이 열린 채로 끝난다. 이때
+    앞부분(제목·목표·추천 데이터)은 멀쩡하므로, 열려 있는 괄호를 닫아 복구한다.
+    """
+    stack, in_str, esc = [], False, False
+    cuts = []          # (자를 위치, 그 시점의 열린 괄호) - 값이 온전히 끝난 지점들
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+                cuts.append((i + 1, tuple(stack)))
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+            cuts.append((i + 1, tuple(stack)))
+        elif ch in "0123456789truefalsn":
+            cuts.append((i + 1, tuple(stack)))
+    # 뒤에서부터 잘라 닫아 본다. 값 자리가 아니라 키 뒤에서 잘리면 파싱이 실패하므로
+    # 성공할 때까지 한 칸씩 앞으로 물러난다.
+    for pos, open_brackets in list(reversed(cuts))[:200]:
+        if not open_brackets:
+            continue
+        body = re.sub(r",\s*$", "", text[:pos].rstrip())
+        try:
+            value = json.loads(body + "".join(reversed(open_brackets)))
+        except ValueError:
+            continue
+        if isinstance(value, dict) and value:
+            return value
+    return None
+
+
+def _parse_json(text: str, reason: str = ""):
     text = text.strip()
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
     try:
@@ -272,7 +316,14 @@ def _parse_json(text: str):
             return json.loads(text[start:end + 1])
         except ValueError:
             pass
-    raise AiError("Gemini 응답을 JSON으로 해석하지 못했습니다.")
+    if start >= 0:                        # 끊긴 응답이면 닫아서 살려 본다
+        repaired = _repair_json(text[start:])
+        if isinstance(repaired, dict) and repaired:
+            return repaired
+    if reason == "MAX_TOKENS":
+        raise AiError("응답이 최대 길이를 넘어 잘렸습니다. 질문을 조금 줄이거나 다른 모델을 선택해 주세요.")
+    raise AiError("Gemini 응답을 JSON으로 해석하지 못했습니다%s."
+                  % (" (%s)" % reason if reason else ""))
 
 
 def _collect_usage(data: dict, usage) -> None:
@@ -318,9 +369,17 @@ def gemini_json(system: str, prompt: str, model: str = "", key: str = "", timeou
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": temperature, "responseMimeType": "application/json"},
     }
-    data = _request(url, payload, key=key, timeout=timeout)
-    _collect_usage(data, usage)
-    return _parse_json(_extract_text(data))
+    # 응답이 길이 제한으로 잘리면 JSON 이 깨진다. 한 번은 그대로 다시 시도한다.
+    last_error = None
+    for attempt in range(2):
+        data = _request(url, payload, key=key, timeout=timeout)
+        _collect_usage(data, usage)
+        text, reason = _extract_text(data)
+        try:
+            return _parse_json(text, reason)
+        except AiError as exc:
+            last_error = exc
+    raise last_error
 
 
 # --------------------------------------------------------------------------- 로컬 검색
