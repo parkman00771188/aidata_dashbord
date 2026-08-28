@@ -1,210 +1,292 @@
 {
- "updated_at": "2026-08-28 10:30:54",
+ "updated_at": "2026-08-28 10:40:47",
  "items": [
   {
-   "id": "b8ae2bdd4c06",
-   "created_at": "2026-08-28 10:30:54",
-   "query": "도시 침수 위험 지역을 예측하고 싶습니다. 강우량과 하천 수위, 배수시설, 저지대 정보를 결합하려고 합니다.",
+   "id": "abc80b4e0b4f",
+   "created_at": "2026-08-28 10:40:47",
+   "query": "양극성장애(조증,우울증) 환자의 수면 리듬, 활동량, 사회적 상호작용, 복약 순응도, 정서 변화 등 행동·생체 데이터를 통합 분석해 개인별 사회리듬을 정량화하고, 이상 변화를 조기에 감지하는 IPSRT 기반 맞춤형 디지털 치료 프로토콜을 개발하려고 합니다. 관련 웨어러블 라이프로그와 정신건강 데이터를 찾고 있어요.",
    "model": "gemini-3.7-flash",
-   "title": "도시 침수 위험 지역 예측",
-   "goal": "시계열 강우량과 하천 수위 관측치, 배수펌프장 등 방재 시설의 처리 용량을 공간 지리 정보와 결합하여 도시 침수 위험 지역 및 취약 지점을 사전에 예측합니다.",
+   "title": "양극성장애 사회리듬 디지털치료",
+   "goal": "양극성장애 환자의 웨어러블 라이프로그와 멀티모달 생체 데이터를 분석하여 일상 리듬을 정량화하고, 조증 및 우울 에피소드 전조 증상을 조기 감지하는 IPSRT 기반 맞춤형 디지털 치료 프로토콜을 구축합니다.",
    "keywords": [
-    "침수",
-    "도시침수",
-    "내수침수",
-    "침수흔적",
-    "침수예상",
-    "홍수위험지도",
-    "강우량",
-    "강수량",
-    "시우량",
-    "하천수위",
-    "하천 수위",
-    "수위관측소",
-    "배수펌프장",
-    "빗물펌프장",
-    "우수관로",
-    "우수관",
-    "빗물받이",
-    "저지대",
-    "수치표고모델",
-    "표고"
+    "양극성장애",
+    "조울증",
+    "우울증",
+    "수면",
+    "수면패턴",
+    "라이프로그",
+    "웨어러블",
+    "생체신호",
+    "활동량",
+    "정신건강",
+    "감정",
+    "정서",
+    "복약",
+    "행동패턴"
    ],
    "fields": [
-    "재난안전",
-    "환경기상",
-    "국토관리",
-    "재난안전환경"
+    "보건의료",
+    "헬스케어",
+    "과학기술",
+    "사회복지"
    ],
    "features": [
     {
-     "name": "시우량 및 하천수위 상관 분석",
-     "detail": "시간대별 강수량과 하천 수위 변화를 시계열로 매칭하여 하천 범람 및 외수 침수 위험 임계치를 도출합니다.",
-     "data_need": "지역코드, 년월일, 1시강수량, 1시하천수위"
+     "name": "수면 및 활동 사회리듬 지표화",
+     "detail": "일일 총 수면 시간, 기상/취침 시점, 활동 강도 분포를 계산하여 대인관계 및 사회적 리듬(IPSRT)의 규칙성 지수를 산출합니다.",
+     "data_need": "total_sleep_time, total_steps, total_wear_time, activity_day_start, activity_day_end"
     },
     {
-     "name": "배수시설 용량 및 방재 능력 평가",
-     "detail": "배수펌프장별 유수지 용량, 배수 처리능력, 펌프 마력을 기반으로 국지성 호우 시 내수 배제 한계를 산정합니다.",
-     "data_need": "펌프장명, 좌표X, 좌표Y, 처리능력, 유수지용량, 배수면적"
+     "name": "정서 및 음성 기반 상태 모니터링",
+     "detail": "환자의 음성 바이오마커와 대화 반응 특성을 분석하여 기분 상태(우울/조증/안정기)의 급격한 변동을 추정합니다.",
+     "data_need": "voice, category_id, category_name, group, group_name"
     },
     {
-     "name": "과거 침수 이력 기반 취약지역 검증",
-     "detail": "과거 침수 흔적 및 침수 피해 위치 좌표와 비교하여 예측 모델의 정확도를 검증하고 고위험 저지대를 식별합니다.",
-     "data_need": "침수지역 위치, 침수심, 침수면적, 위도, 경도, 발생일"
+     "name": "사회리듬 붕괴 조기 경보 및 중재 알림",
+     "detail": "수면 파편화, 야간 활동 급증, 비활동 시간 연장 등 리듬 이상치를 감지하여 환자와 임상의에게 리듬 교정 행동 가이드를 제공합니다.",
+     "data_need": "activity_high, activity_inactive, activity_met_1min, lifelog, total_sleep_time"
     }
    ],
    "datasets": [
     {
-     "uid": "public:15150315",
-     "source": "공공데이터포털",
-     "source_id": "15150315",
-     "title": "경상남도 창원시_시간별 강수량",
-     "field": "재난안전",
-     "subfield": "안전관리",
-     "organization": "경상남도 창원시",
-     "url": "https://www.data.go.kr/data/15150315/fileData.do",
+     "uid": "aihub:71401",
+     "source": "AI Hub",
+     "source_id": "71401",
+     "title": "고령인구 우울증 데이터",
+     "field": "헬스케어",
+     "subfield": "",
+     "organization": "전남대학교병원",
+     "url": "https://aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&aihubDataSe=data&dataSetSn=71401",
      "formats": [
-      "CSV",
-      "JSON",
-      "XML"
+      "오디오",
+      "텍스트"
      ],
-     "row_count": 191340,
-     "downloads": 54,
-     "modified_at": "2025-11-05",
-     "update_cycle": "수시",
+     "row_count": 0,
+     "downloads": 180,
+     "modified_at": "2024-10",
+     "update_cycle": "",
      "access": {
-      "type": "다운로드",
-      "tone": "download",
-      "note": "CSV 파일",
+      "type": "안심존",
+      "tone": "lock",
+      "note": "이용신청 후 열람만 가능",
       "size_bytes": 0
      },
      "role": "핵심",
-     "why": "시간대별 강수량 상세 항목(1시~24시)이 구비되어 있어 단시간 집중호우에 따른 침수 유발 강우량을 분석하는 데 필수적입니다.",
-     "usage": "지역코드 및 년월일을 기준으로 특정 일자별 시간당 강우 패턴을 추출하고 최대 시우량을 계산합니다.",
+     "why": "우울증 환자군 및 대조군의 웨어러블 활동량, 총 수면 시간, 음성 데이터가 결합되어 있어 일상 사회리듬 지표와 기분 상태 간 상관성을 학습하는 핵심 데이터입니다.",
+     "usage": "lifelog, total_sleep_time, total_steps 항목을 시계열로 정렬하여 일별 수면·활동 규칙성 패턴을 추출하고 음성 데이터와 연계해 정서 변화를 모델링합니다.",
      "items": [
-      "지역코드",
-      "지역명",
-      "년월일",
-      "1시강수량",
-      "2시강수량",
-      "3시강수량"
+      "voice",
+      "category_id",
+      "subject",
+      "lifelog",
+      "total_wear_time",
+      "total_steps",
+      "total_sleep_time"
      ],
-     "join_key": "지역코드, 년월일",
+     "join_key": "subject",
      "columns": [
-      "지역코드",
-      "지역명",
-      "년월일",
-      "1시강수량",
-      "2시강수량",
-      "3시강수량",
-      "4시강수량",
-      "5시강수량",
-      "6시강수량",
-      "7시강수량",
-      "8시강수량",
-      "9시강수량",
-      "10시강수량",
-      "11시강수량",
-      "12시강수량",
-      "13시강수량",
-      "14시강수량",
-      "15시강수량",
-      "16시강수량",
-      "17시강수량",
-      "18시강수량",
-      "19시강수량",
-      "20시강수량",
-      "21시강수량",
-      "22시강수량",
-      "23시강수량",
-      "24시강수량"
+      "voice",
+      "category_id",
+      "file_name",
+      "subject",
+      "MS",
+      "2:동거",
+      "sex",
+      "2:여자",
+      "id",
+      "70000]",
+      "date_visited",
+      "age",
+      "group",
+      "2:대조군",
+      "lifelog",
+      "total_wear_time",
+      "total_steps",
+      "total_sleep_time",
+      "sleep_efficiency",
+      "Lux",
+      "Kcals",
+      "MET rate",
+      "depression",
+      "PHQ-9",
+      "PHQ-9-1",
+      "PHQ-9-2",
+      "category_name",
+      "우울한 기분]",
+      "insomnia",
+      "ISI",
+      "불면]",
+      "sd",
+      "1-1",
+      "code",
+      "name",
+      "date",
+      "hospital_name",
+      "education",
+      "smoking",
+      "insurance"
      ],
-     "column_count": 27
+     "column_count": 120
     },
     {
-     "uid": "public:15150319",
-     "source": "공공데이터포털",
-     "source_id": "15150319",
-     "title": "경상남도 창원시_하천수위 통계",
-     "field": "재난안전",
-     "subfield": "안전관리",
-     "organization": "경상남도 창원시",
-     "url": "https://www.data.go.kr/data/15150319/fileData.do",
+     "uid": "aihub:573",
+     "source": "AI Hub",
+     "source_id": "573",
+     "title": "정신건강진단 및 예측을 위한 멀티모달 데이터",
+     "field": "헬스케어",
+     "subfield": "",
+     "organization": "전남대학교병원",
+     "url": "https://aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&aihubDataSe=data&dataSetSn=573",
      "formats": [
-      "CSV",
-      "JSON",
-      "XML"
+      "오디오"
      ],
-     "row_count": 9598,
-     "downloads": 28,
-     "modified_at": "2025-11-05",
-     "update_cycle": "수시",
+     "row_count": 0,
+     "downloads": 242,
+     "modified_at": "2022-07",
+     "update_cycle": "",
      "access": {
-      "type": "다운로드",
-      "tone": "download",
-      "note": "CSV 파일",
+      "type": "안심존",
+      "tone": "lock",
+      "note": "이용신청 후 열람만 가능",
       "size_bytes": 0
      },
      "role": "핵심",
-     "why": "하천 수위의 시간대별 실측 항목이 포함되어 있어 강우량 증가에 따른 하천 수위 상승 폭과 범람 위험을 산출할 수 있습니다.",
-     "usage": "시간별 강수량 데이터와 일자 및 지역코드로 결합하여 강우량 대비 하천 수위의 반응 시차 및 수위 상승률을 분석합니다.",
+     "why": "정신건강 질환군과 대조군의 멀티모달 음성 및 임상 진단 정보를 제공하여 기분 장애 상태 판별 알고리즘을 고도화하는 데 필수적입니다.",
+     "usage": "group, group_name별로 voice 오디오 피처를 추출하고 나이, 성별 등 인구학적 특성에 따른 정서 음향 지표(피치, 발화 속도 등)를 학습합니다.",
      "items": [
-      "지역코드",
-      "지역명",
-      "년월일",
-      "1시하천수위",
-      "2시하천수위",
-      "3시하천수위"
+      "voice",
+      "category_id",
+      "category_name",
+      "group",
+      "group_name",
+      "sex",
+      "age"
      ],
-     "join_key": "지역코드, 년월일",
+     "join_key": "id",
      "columns": [
-      "지역코드",
-      "지역명",
-      "년월일",
-      "1시하천수위",
-      "2시하천수위",
-      "3시하천수위",
-      "4시하천수위",
-      "5시하천수위",
-      "6시하천수위",
-      "7시하천수위",
-      "8시하천수위",
-      "9시하천수위",
-      "10시하천수위",
-      "11시하천수위",
-      "12시하천수위",
-      "13시하천수위",
-      "14시하천수위",
-      "15시하천수위",
-      "16시하천수위",
-      "17시하천수위",
-      "18시하천수위",
-      "19시하천수위",
-      "20시하천수위",
-      "21시하천수위",
-      "22시하천수위",
-      "23시하천수위",
-      "24시하천수위"
+      "info",
+      "name",
+      "description",
+      "url",
+      "date_created",
+      "subject",
+      "id",
+      "group",
+      "group_name",
+      "sex",
+      "sex_name",
+      "age",
+      "date_visited",
+      "voice",
+      "category_id",
+      "category_name",
+      "sampling_rate",
+      "file_name",
+      "stt",
+      "license",
+      "depression",
+      "PHQ-9",
+      "licenses",
+      "clinical_data"
      ],
-     "column_count": 27
+     "column_count": 24
     },
     {
-     "uid": "public:15123121",
+     "uid": "aihub:226",
+     "source": "AI Hub",
+     "source_id": "226",
+     "title": "치매 고위험군 웨어러블 라이프로그",
+     "field": "헬스케어",
+     "subfield": "",
+     "organization": "에코인사이트글로벌",
+     "url": "https://aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&aihubDataSe=data&dataSetSn=226",
+     "formats": [
+      "센서",
+      "텍스트"
+     ],
+     "row_count": 0,
+     "downloads": 1995,
+     "modified_at": "2025-03",
+     "update_cycle": "",
+     "access": {
+      "type": "다운로드",
+      "tone": "download",
+      "note": "",
+      "size_bytes": 89380444
+     },
+     "role": "보조",
+     "why": "5분/1분 단위의 세밀한 웨어러블 MET, 활동 강도, 기상/취침 시작 시점 항목이 포함되어 있어 반출 전 사회리듬 알고리즘의 기초 파이프라인을 사전 검증하기 적합합니다.",
+     "usage": "activity_met_1min, activity_day_start, activity_day_end 항목을 가공하여 24시간 일주기 리듬(Circadian Rhythm) 계산 수식을 정립하고 외부 테스트용 코드로 활용합니다.",
+     "items": [
+      "date",
+      "activity_average_met",
+      "activity_daily_movement",
+      "activity_day_start",
+      "activity_day_end",
+      "activity_met_1min"
+     ],
+     "join_key": "",
+     "columns": [
+      "한글명",
+      "email",
+      "date",
+      "check",
+      "nonwear",
+      "activity_average_met",
+      "activity_cal_active",
+      "activity_cal_total",
+      "activity_class_5min",
+      "activity_daily_movement",
+      "activity_day_end",
+      "activity_day_start",
+      "activity_high",
+      "activity_inactive",
+      "activity_inactivity_alerts",
+      "active_low",
+      "activity_medium",
+      "activity_met_1min",
+      "activity_met_min_high",
+      "activity_met_min_inactive",
+      "activity_met_min_low",
+      "activity_met_min_medium",
+      "activity_non_wear",
+      "activity_rest",
+      "activity_score",
+      "activity_score_meet_daily_targets",
+      "activity_score_move_every_hour",
+      "activity_score_recovery_time",
+      "activity_score_stay_active",
+      "activity_score_training_frequency",
+      "activity_score_training_volume",
+      "activity_steps",
+      "activity_total",
+      "sleep_awake",
+      "sleep_bedtime_end",
+      "sleep_bedtime_start",
+      "sleep_breatj_average",
+      "sleep_deep",
+      "sleep_duration",
+      "sleep_efficiency"
+     ],
+     "column_count": 111
+    },
+    {
+     "uid": "public:15124775",
      "source": "공공데이터포털",
-     "source_id": "15123121",
-     "title": "국토교통부 국토지리정보원_공간정보공동활용_배수펌프장",
-     "field": "국토관리",
-     "subfield": "지역및도시",
-     "organization": "국토교통부 국토지리정보원",
-     "url": "https://www.data.go.kr/data/15123121/fileData.do",
+     "source_id": "15124775",
+     "title": "국민건강보험공단_우울증 조울증 조현병 진료 통계",
+     "field": "보건의료",
+     "subfield": "건강보험",
+     "organization": "국민건강보험공단",
+     "url": "https://www.data.go.kr/data/15124775/fileData.do",
      "formats": [
       "CSV",
       "JSON",
       "XML"
      ],
-     "row_count": 220,
-     "downloads": 339,
-     "modified_at": "2025-11-20",
+     "row_count": 42,
+     "downloads": 4557,
+     "modified_at": "2026-05-11",
      "update_cycle": "수시",
      "access": {
       "type": "다운로드",
@@ -212,541 +294,328 @@
       "note": "CSV 파일",
       "size_bytes": 0
      },
-     "role": "핵심",
-     "why": "전국 배수펌프장의 위치 좌표와 배수면적, 처리능력, 유수지용량 항목을 포함하여 배수 한계치를 정량 평가할 수 있습니다.",
-     "usage": "좌표X, 좌표Y를 기반으로 공간 버퍼를 생성하고 배수면적과 처리능력을 매핑하여 유역별 내수 배제 가능량을 산정합니다.",
+     "role": "참고",
+     "why": "조울증(F31) 및 우울증(F32, F33)의 연도별 진료 추이 통계를 확인하여 프로토콜 대상 타깃 코호트의 임상 역학 기준치로 활용할 수 있습니다.",
+     "usage": "주상병코드와 진료년도, 진료인원(명)을 바탕으로 조울증 질환의 규모와 역학적 배경을 정의합니다.",
      "items": [
-      "펌프장명",
-      "배수면적",
-      "처리능력",
-      "유수지용량",
-      "좌표X",
-      "좌표Y"
+      "주상병코드",
+      "진료년도",
+      "진료인원(명)",
+      "진료건수(건)"
      ],
-     "join_key": "좌표X, 좌표Y",
+     "join_key": "",
      "columns": [
-      "공간정보일렬번호",
-      "행정구역아이디",
-      "상세주소",
-      "펌프장명",
-      "펌프장구분명",
-      "배수면적",
-      "처리능력",
-      "모터시설규모",
-      "펌프시설규모",
-      "계획년도",
-      "설치년도",
-      "관리자",
-      "설치자",
-      "하천명",
-      "유수지용량",
-      "에프17",
-      "좌표X",
-      "좌표Y",
-      "심볼코드",
-      "널값",
-      "지오메트리"
+      "주상병코드",
+      "진료년도",
+      "진료인원(명)",
+      "진료건수(건)"
+     ],
+     "column_count": 4
+    },
+    {
+     "uid": "public:15059738",
+     "source": "공공데이터포털",
+     "source_id": "15059738",
+     "title": "보건복지부 국립정신건강센터_외래환자기초정보",
+     "field": "보건의료",
+     "subfield": "보건의료",
+     "organization": "보건복지부 국립정신건강센터",
+     "url": "https://www.data.go.kr/data/15059738/fileData.do",
+     "formats": [
+      "CSV",
+      "JSON",
+      "XML"
+     ],
+     "row_count": 54836,
+     "downloads": 899,
+     "modified_at": "2025-06-16",
+     "update_cycle": "수시",
+     "access": {
+      "type": "다운로드",
+      "tone": "download",
+      "note": "CSV 파일",
+      "size_bytes": 0
+     },
+     "role": "참고",
+     "why": "실제 국립정신건강센터 외래 환자의 상병코드와 연령, 성별 분포를 파악하여 디지털 치료 타깃군의 인구통계학적 가중치를 설정하는 데 유용합니다.",
+     "usage": "주상병코드와 연령, 성별을 교차 분석하여 조울증/기분장애 환자의 주요 연령층별 프로토콜 가이드라인 수립에 참조합니다.",
+     "items": [
+      "연령",
+      "성별",
+      "주상병코드",
+      "상병명",
+      "보험유형"
+     ],
+     "join_key": "",
+     "columns": [
+      "연령",
+      "성별",
+      "주상병코드",
+      "상병명",
+      "보험유형"
+     ],
+     "column_count": 5
+    },
+    {
+     "uid": "public:15063068",
+     "source": "공공데이터포털",
+     "source_id": "15063068",
+     "title": "경상북도_정신재활시설현황",
+     "field": "사회복지",
+     "subfield": "사회복지일반",
+     "organization": "경상북도",
+     "url": "https://www.data.go.kr/data/15063068/fileData.do",
+     "formats": [
+      "CSV",
+      "JSON",
+      "XML"
+     ],
+     "row_count": 15,
+     "downloads": 935,
+     "modified_at": "2025-11-08",
+     "update_cycle": "연간",
+     "access": {
+      "type": "다운로드",
+      "tone": "download",
+      "note": "CSV 파일",
+      "size_bytes": 0
+     },
+     "role": "참고",
+     "why": "정신재활시설 내 양극성장애 환자의 입소 및 이용 현황을 파악하여 지역사회 기반 IPSRT 치료제 연계 모델을 설계하는 데 참고합니다.",
+     "usage": "양극성장애와 우울증 등록 인원 현황을 바탕으로 향후 실증 연구를 수행할 재활 인프라 규모를 가늠합니다.",
+     "items": [
+      "시군명",
+      "시설명",
+      "현원",
+      "조현병",
+      "양극성장애",
+      "우울증"
+     ],
+     "join_key": "",
+     "columns": [
+      "시군명",
+      "시설명",
+      "현원",
+      "남",
+      "여",
+      "조현병",
+      "양극성장애",
+      "알코올 사용장애",
+      "우울증",
+      "기타",
+      "보험일반",
+      "보험수급",
+      "입소현원",
+      "입소정원",
+      "이용현원",
+      "이용정원",
+      "정신건강전문요원",
+      "재활활동요원",
+      "재활활동보조원",
+      "기능직",
+      "인력 충원 예정"
      ],
      "column_count": 21
-    },
-    {
-     "uid": "public:15148889",
-     "source": "공공데이터포털",
-     "source_id": "15148889",
-     "title": "서울특별시 강서구_빗물펌프장 정보",
-     "field": "재난안전",
-     "subfield": "안전관리",
-     "organization": "서울특별시 강서구",
-     "url": "https://www.data.go.kr/data/15148889/fileData.do",
-     "formats": [
-      "CSV",
-      "JSON",
-      "XML"
-     ],
-     "row_count": 49,
-     "downloads": 73,
-     "modified_at": "2025-09-09",
-     "update_cycle": "수시",
-     "access": {
-      "type": "다운로드",
-      "tone": "download",
-      "note": "CSV 파일",
-      "size_bytes": 0
-     },
-     "role": "보조",
-     "why": "위경도 좌표와 함께 펌프 양수량, 유역면적, 유수지 용량 등 세부 배수 스펙이 상세히 기재되어 있습니다.",
-     "usage": "도심 빗물펌프장 위치별 최대 양수 처리량과 유역면적을 분석하여 배수 지연 취약 구역을 도출합니다.",
-     "items": [
-      "펌프장명",
-      "위도",
-      "경도",
-      "펌프 양수량(세제곱미터_min)",
-      "유역면적(ha)",
-      "유수지 용량(세제곱미터)"
-     ],
-     "join_key": "위도, 경도",
-     "columns": [
-      "펌프장명",
-      "펌프장 주소",
-      "위도",
-      "경도",
-      "펌프(호기)",
-      "펌프 마력(HP)",
-      "펌프 양수량(세제곱미터_min)",
-      "유역면적(ha)",
-      "유수지 용량(세제곱미터)",
-      "데이터기준일자"
-     ],
-     "column_count": 10
-    },
-    {
-     "uid": "public:3076447",
-     "source": "공공데이터포털",
-     "source_id": "3076447",
-     "title": "부산광역시_배수 펌프장 현황",
-     "field": "재난안전",
-     "subfield": "안전관리",
-     "organization": "부산광역시",
-     "url": "https://www.data.go.kr/data/3076447/fileData.do",
-     "formats": [
-      "CSV",
-      "JSON",
-      "XML"
-     ],
-     "row_count": 73,
-     "downloads": 2004,
-     "modified_at": "2025-08-13",
-     "update_cycle": "월간",
-     "access": {
-      "type": "다운로드",
-      "tone": "download",
-      "note": "CSV 파일",
-      "size_bytes": 0
-     },
-     "role": "보조",
-     "why": "구군별 배수펌프장의 배수량, 유수지 면적 및 용량 정보가 명시되어 있어 주요 해안/도심 배수 능력을 파악할 수 있습니다.",
-     "usage": "배수량과 유수지 용량 지표를 기반으로 시간당 강우 집중 시 유수지 월류 가능 시간을 계산합니다.",
-     "items": [
-      "구군",
-      "배수펌프장명",
-      "배수량(제곱미터_분)",
-      "유수지 면적(제곱미터)",
-      "유수지 용량(제곱미터)"
-     ],
-     "join_key": "배수펌프장명",
-     "columns": [
-      "구군",
-      "배수펌프장명",
-      "위치",
-      "펌프시설 전동기(HP)",
-      "펌프시설 엔진(HP)",
-      "펌프시설 설치년도",
-      "설계빈도(년)",
-      "배수량(제곱미터_분)",
-      "비상발전기 시설",
-      "비상발전기 시설년도",
-      "유수지 면적(제곱미터)",
-      "유수지 용량(제곱미터)",
-      "비고"
-     ],
-     "column_count": 13
-    },
-    {
-     "uid": "public:15159563",
-     "source": "공공데이터포털",
-     "source_id": "15159563",
-     "title": "전남광주통합특별시 북구_침수피해지역 현황",
-     "field": "재난안전",
-     "subfield": "안전관리",
-     "organization": "전남광주통합특별시 북구",
-     "url": "https://www.data.go.kr/data/15159563/fileData.do",
-     "formats": [
-      "CSV",
-      "JSON",
-      "XML"
-     ],
-     "row_count": 2837,
-     "downloads": 87,
-     "modified_at": "2026-05-20",
-     "update_cycle": "연간",
-     "access": {
-      "type": "다운로드",
-      "tone": "download",
-      "note": "CSV 파일",
-      "size_bytes": 0
-     },
-     "role": "보조",
-     "why": "침수 피해가 발생했던 실제 위도·경도 좌표와 발생연도 정보가 있어 예측 결과와의 공간적 정합성을 검증할 수 있습니다.",
-     "usage": "예측된 침수 고위험 지역 폴리곤과 과거 피해 위치 좌표를 공간 조인하여 모델의 적중률을 평가합니다.",
-     "items": [
-      "피해위치(지번)",
-      "위도",
-      "경도",
-      "피해내용",
-      "발생연도"
-     ],
-     "join_key": "위도, 경도",
-     "columns": [
-      "연번",
-      "피해위치(지번)",
-      "피해위치(도로명)",
-      "위도",
-      "경도",
-      "피해내용",
-      "발생연도"
-     ],
-     "column_count": 7
-    },
-    {
-     "uid": "public:15143156",
-     "source": "공공데이터포털",
-     "source_id": "15143156",
-     "title": "부산광역시 사상구_침수흔적도",
-     "field": "재난안전",
-     "subfield": "안전관리",
-     "organization": "부산광역시 사상구",
-     "url": "https://www.data.go.kr/data/15143156/fileData.do",
-     "formats": [
-      "CSV",
-      "JSON",
-      "XML"
-     ],
-     "row_count": 9,
-     "downloads": 368,
-     "modified_at": "2025-12-05",
-     "update_cycle": "수시",
-     "access": {
-      "type": "다운로드",
-      "tone": "download",
-      "note": "CSV 파일",
-      "size_bytes": 0
-     },
-     "role": "보조",
-     "why": "침수지역 위치, 침수심, 침수면적 등 실제 재해 흔적 데이터가 수록되어 침수 규모 모델링에 기여합니다.",
-     "usage": "과거 호우 발생일의 강우량 수치와 침수심, 침수면적을 매핑하여 침수 깊이 추정 회귀식 보정에 활용합니다.",
-     "items": [
-      "침수지역 위치",
-      "재해명",
-      "발생일",
-      "침수심",
-      "침수면적"
-     ],
-     "join_key": "발생일",
-     "columns": [
-      "시도",
-      "시군구",
-      "지구명",
-      "침수지역 위치",
-      "재해명",
-      "발생일",
-      "침수기간",
-      "침수시간",
-      "침수심",
-      "침수면적",
-      "침수흔적초동조사일",
-      "데이터기준일"
-     ],
-     "column_count": 12
-    },
-    {
-     "uid": "public:15038192",
-     "source": "공공데이터포털",
-     "source_id": "15038192",
-     "title": "경기도_이천시_강우량 측정 데이터",
-     "field": "국토관리",
-     "subfield": "수자원",
-     "organization": "경기도 이천시",
-     "url": "https://www.data.go.kr/data/15038192/fileData.do",
-     "formats": [
-      "CSV",
-      "JSON",
-      "XML"
-     ],
-     "row_count": 76,
-     "downloads": 1322,
-     "modified_at": "2025-09-02",
-     "update_cycle": "연간",
-     "access": {
-      "type": "다운로드",
-      "tone": "download",
-      "note": "CSV 파일",
-      "size_bytes": 0
-     },
-     "role": "참고",
-     "why": "10분 단위 강우량 관측 데이터로 초단기 집중호우 패턴 분석의 세분화 레퍼런스로 활용 가능합니다.",
-     "usage": "10분 단위 강우 급증 구간을 분석하여 도시 우수관 역류를 유발하는 한계 강우 강도를 설정합니다.",
-     "items": [
-      "지점코드",
-      "지점명",
-      "날짜",
-      "강우량(mm)",
-      "강우여부"
-     ],
-     "join_key": "날짜",
-     "columns": [
-      "지점코드",
-      "지점명",
-      "분류(M 10분)",
-      "날짜",
-      "강우량(mm)",
-      "강우여부"
-     ],
-     "column_count": 6
-    },
-    {
-     "uid": "public:15067418",
-     "source": "공공데이터포털",
-     "source_id": "15067418",
-     "title": "인천광역시 남동구_침수위험지역현황",
-     "field": "재난안전",
-     "subfield": "안전관리",
-     "organization": "인천광역시 남동구",
-     "url": "https://www.data.go.kr/data/15067418/fileData.do",
-     "formats": [
-      "CSV",
-      "JSON",
-      "XML"
-     ],
-     "row_count": 5,
-     "downloads": 1679,
-     "modified_at": "2025-08-15",
-     "update_cycle": "연간",
-     "access": {
-      "type": "다운로드",
-      "tone": "download",
-      "note": "CSV 파일",
-      "size_bytes": 0
-     },
-     "role": "참고",
-     "why": "상습 침수 및 저지대 침수위험지역으로 관리되는 주소 정보가 포함되어 있습니다.",
-     "usage": "소재지지번주소를 지오코딩하여 저지대 침수 위험 관리 구역 좌표 레이어로 중첩합니다.",
-     "items": [
-      "연번",
-      "지역명",
-      "소재지지번주소"
-     ],
-     "join_key": "소재지지번주소",
-     "columns": [
-      "연번",
-      "지역명",
-      "소재지지번주소",
-      "관리부서",
-      "관리부서연락처",
-      "데이터기준일자"
-     ],
-     "column_count": 6
-    },
-    {
-     "uid": "public:15124487",
-     "source": "공공데이터포털",
-     "source_id": "15124487",
-     "title": "전남광주통합특별시 광산구_행정동별맨홀및빗물받이개수",
-     "field": "환경기상",
-     "subfield": "상하수도·수질",
-     "organization": "전남광주통합특별시 광산구",
-     "url": "https://www.data.go.kr/data/15124487/fileData.do",
-     "formats": [
-      "CSV",
-      "JSON",
-      "XML"
-     ],
-     "row_count": 40,
-     "downloads": 163,
-     "modified_at": "2025-07-01",
-     "update_cycle": "수시",
-     "access": {
-      "type": "다운로드",
-      "tone": "download",
-      "note": "CSV 파일",
-      "size_bytes": 0
-     },
-     "role": "참고",
-     "why": "행정동별 빗물받이 및 맨홀 설치 수량 정보를 통해 도심 미세 배수 네트워크의 밀집도를 파악할 수 있습니다.",
-     "usage": "행정동 단위 배수시설 밀집도를 산출하여 노면수 배제 취약 동을 구분하는 가중치로 사용합니다.",
-     "items": [
-      "행정동",
-      "구분",
-      "개수"
-     ],
-     "join_key": "행정동",
-     "columns": [
-      "연번",
-      "행정동",
-      "구분",
-      "개수",
-      "관리부서명",
-      "데이터기준일자"
-     ],
-     "column_count": 6
     }
    ],
    "pipeline": [
     {
-     "step": "수문데이터결합",
-     "detail": "경상남도 창원시_시간별 강수량의 지역코드, 년월일과 경상남도 창원시_하천수위 통계의 동일 항목을 기준으로 병합합니다. 1시~24시까지 시간대별 강수량(mm)과 하천수위(m)를 1:1로 매칭하여 시계열 수문 시뮬레이션 테이블을 구축합니다.",
-     "output": "시간대별 강우량-하천수위 통합 시계열 데이터셋",
+     "step": "외부 알고리즘 사전 검증",
+     "detail": "치매 고위험군 웨어러블 라이프로그의 activity_met_1min, activity_day_start, activity_day_end 데이터를 활용하여 일주기 규칙성 지수(Circadian Rhythm Metric) 계산 및 이상치 탐지 코드를 외부 로컬 환경에서 사전에 개발하고 검증합니다.",
+     "output": "안심존 반입용 전처리 및 사회리듬 수치화 파이썬 스크립트",
      "uses": [
       {
-       "uid": "public:15150315",
-       "title": "경상남도 창원시_시간별 강수량",
-       "source": "공공데이터포털"
-      },
-      {
-       "uid": "public:15150319",
-       "title": "경상남도 창원시_하천수위 통계",
-       "source": "공공데이터포털"
+       "uid": "aihub:226",
+       "title": "치매 고위험군 웨어러블 라이프로그",
+       "source": "AI Hub"
       }
      ]
     },
     {
-     "step": "배수용량산정",
-     "detail": "국토교통부 국토지리정보원_공간정보공동활용_배수펌프장의 좌표X, 좌표Y를 기준으로 배수면적과 처리능력(㎥/분)을 공간 격자에 할당합니다. 서울특별시 강서구_빗물펌프장 정보 및 부산광역시_배수 펌프장 현황의 유수지 용량과 펌프 양수량 데이터를 추가 반영하여 유역별 단위 시간당 배수 한계치를 산출합니다.",
-     "output": "격자 유역별 최대 우수 배출 용량 맵",
+     "step": "안심존 데이터 정합 및 특성 추출",
+     "detail": "안심존 서버 내에서 고령인구 우울증 데이터의 total_sleep_time, total_steps, lifelog와 정신건강진단 멀티모달 데이터의 voice, group_name을 subject 식별자 기준으로 결합 및 정제합니다.",
+     "output": "환자군 및 대조군별 시계열 라이프로그·음성 통합 피처셋",
      "uses": [
       {
-       "uid": "public:15123121",
-       "title": "국토교통부 국토지리정보원_공간정보공동활용_배수펌프장",
-       "source": "공공데이터포털"
+       "uid": "aihub:71401",
+       "title": "고령인구 우울증 데이터",
+       "source": "AI Hub"
       },
       {
-       "uid": "public:15148889",
-       "title": "서울특별시 강서구_빗물펌프장 정보",
-       "source": "공공데이터포털"
-      },
-      {
-       "uid": "public:3076447",
-       "title": "부산광역시_배수 펌프장 현황",
-       "source": "공공데이터포털"
+       "uid": "aihub:573",
+       "title": "정신건강진단 및 예측을 위한 멀티모달 데이터",
+       "source": "AI Hub"
       }
      ]
     },
     {
-     "step": "침수위험예측",
-     "detail": "통합 수문 데이터의 시우량 유입량과 격자별 배수 처리용량을 비교하여 배수 용량을 초과하는 유출 수량을 계산합니다. 여기에 하천수위 상승에 따른 배수문 폐쇄 및 역류 시나리오를 적용하여 격자별 침수 위험 등급을 1~4단계로 산출합니다.",
-     "output": "시나리오별 도시 침수 위험도 예측 격자 모델",
+     "step": "정서-생체 리듬 예측 모델 학습",
+     "detail": "안심존 내부에서 추출된 수면 주기 변동폭, 활동량 급감/급증 지표, 음성 음향 특성을 독립변수로 설정하고, group 상태(우울/조증 위험/정상)를 분류하는 경량화 머신러닝 및 딥러닝 모델을 학습합니다.",
+     "output": "기분 에피소드 조기 감지 학습 모델 가중치(model.pt)",
      "uses": [
       {
-       "uid": "public:15150315",
-       "title": "경상남도 창원시_시간별 강수량",
-       "source": "공공데이터포털"
+       "uid": "aihub:71401",
+       "title": "고령인구 우울증 데이터",
+       "source": "AI Hub"
       },
       {
-       "uid": "public:15150319",
-       "title": "경상남도 창원시_하천수위 통계",
-       "source": "공공데이터포털"
-      },
-      {
-       "uid": "public:15123121",
-       "title": "국토교통부 국토지리정보원_공간정보공동활용_배수펌프장",
-       "source": "공공데이터포털"
+       "uid": "aihub:573",
+       "title": "정신건강진단 및 예측을 위한 멀티모달 데이터",
+       "source": "AI Hub"
       }
      ]
     },
     {
-     "step": "이력정합검증",
-     "detail": "전남광주통합특별시 북구_침수피해지역 현황의 위도, 경도 좌표와 부산광역시 사상구_침수흔적도의 발생일별 침수면적 데이터를 예측 모델의 고위험 영역과 공간 중첩합니다. 인천광역시 남동구_침수위험지역현황의 지번 위치와 대조하여 과거 실제 침수 구역과의 일치도를 평가하고 모델 가중치를 보정합니다.",
-     "output": "과거 재해 이력 기반 검증 완료 침수 위험 예측 지도",
+     "step": "IPSRT 디지털 중재 프로토콜 도출",
+     "detail": "반출된 모델의 상태 예측 임계값과 국민건강보험공단 진료 통계 및 국립정신건강센터 외래환자기초정보의 연령·성별 기저 특성을 매핑하여 개인 맞춤형 기상/수면/활동 알림 가이드라인을 정립합니다.",
+     "output": "양극성장애 사회리듬 조기 감지 및 맞춤형 중재 프로토콜 명세서",
      "uses": [
       {
-       "uid": "public:15159563",
-       "title": "전남광주통합특별시 북구_침수피해지역 현황",
+       "uid": "public:15124775",
+       "title": "국민건강보험공단_우울증 조울증 조현병 진료 통계",
        "source": "공공데이터포털"
       },
       {
-       "uid": "public:15143156",
-       "title": "부산광역시 사상구_침수흔적도",
-       "source": "공공데이터포털"
-      },
-      {
-       "uid": "public:15067418",
-       "title": "인천광역시 남동구_침수위험지역현황",
+       "uid": "public:15059738",
+       "title": "보건복지부 국립정신건강센터_외래환자기초정보",
        "source": "공공데이터포털"
       }
      ]
     }
    ],
-   "outcome": "특정 강우 시나리오(예: 시간당 50mm, 100mm)가 발생했을 때 하천 수위 상승과 배수 인프라 용량 한계로 인해 침수가 발생하는 구체적인 구역과 침수 위험도를 사전에 식별할 수 있습니다. 지자체 방재 담당자는 침수 취약 저지대를 미리 파악하여 빗물펌프장 선제 가동 및 주민 대피 우선 경로를 수립할 수 있습니다.",
+   "outcome": "환자의 수면 및 일상 활동 데이터만으로 사회리듬의 붕괴 패턴을 조기에 정량 감지할 수 있게 됩니다. 이를 통해 조증이나 우울 삽화가 본격화되기 전 선제적 행동 중재 알림을 제공하는 IPSRT 기반 맞춤형 디지털 치료제를 구현할 수 있습니다.",
    "cautions": [
-    "제공된 강우량과 하천수위 데이터가 특정 시군(창원시 등)에 한정되어 있으므로 타 지역 적용 시 해당 지자체의 계측 데이터로 교체해야 합니다.",
-    "배수펌프장의 처리능력과 유수지 용량 수치는 시설의 기계적 최대치이므로 실제 관로 퇴적 상태나 정전 등의 비상 변수를 감안한 감쇄 계수 적용이 필요합니다."
+    "안심존 데이터셋(AI Hub 71401, 573)은 개인정보 및 민감 건강 정보가 포함되어 있어 원본 및 가공 데이터 반출이 불가하며 학습된 모델 파일과 성능 지표만 반출 심사를 거쳐야 합니다.",
+    "양극성장애는 조증과 우울증의 생체신호 양상이 정반대로 나타나므로 단방향 임계치 설정이 아닌 양방향 이상치 탐지 로직을 적용해야 합니다.",
+    "웨어러블 미착용 시간(total_wear_time 누락)으로 인한 결측치를 수면이나 무활동으로 오인하지 않도록 마스킹 처리가 필수적입니다."
    ],
    "missing": [
-    "전국 단위 정밀 수치표고모델(DEM) 및 건물 지형 공간정보 (저지대 침수 흐름 모의용)",
-    "지하 우수관로 관경, 구배 및 통수능력을 포함한 하수관망 지리정보 데이터"
+    "양극성장애(F31) 진단 환자만을 대상으로 한 장기간 연속 복약 순응도 및 사회적 상호작용(통화량/메시지 빈도 등) 실측 데이터",
+    "IPSRT 표준 평가지표인 사회적 리듬 척도(SRM, Social Rhythm Metric) 설문 라벨 데이터"
    ],
-   "safezone": null,
+   "safezone": {
+    "datasets": [
+     {
+      "uid": "aihub:71401",
+      "title": "고령인구 우울증 데이터",
+      "source": "AI Hub"
+     },
+     {
+      "uid": "aihub:573",
+      "title": "정신건강진단 및 예측을 위한 멀티모달 데이터",
+      "source": "AI Hub"
+     }
+    ],
+    "outside": [
+     "IRB 심의 승인서 및 안심존 멀티데이터 동시 사용 신청용 연구계획서 준비",
+     "공개 라이프로그 데이터('치매 고위험군 웨어러블 라이프로그')를 활용하여 시계열 특성 추출 및 모델 학습 파이프라인 코드 작성 및 로컬 디버깅 완료",
+     "안심존 환경(Ubuntu 22.04, Python 3.11, PyTorch)에 맞춘 의존성 패키지 requirements.txt 목록 확정"
+    ],
+    "inside": [
+     "초기 인터넷 개방 5일 이내에 PyTorch, scikit-learn 등 필수 라이브러리 설치 및 외부에서 작성한 학습 코드 업로드 완료",
+     "인터넷 차단 후 데이터 마운트가 완료되면 '고령인구 우울증 데이터', '정신건강진단 및 예측을 위한 멀티모달 데이터' 원본 데이터를 작업 폴더(nasw)로 복사",
+     "라이프로그(수면, 걸음수) 및 음성 데이터 전처리 수행 후 특징 벡터 추출",
+     "조증/우울 리듬 이상 감지 모델 학습 및 SHAP 기반 피처 기여도 분석 수행",
+     "학습된 모델 파라미터(model.pt), config.json, feature_names.json을 nasw/download 디렉터리로 이동하고 반출 신청 제출"
+    ],
+    "combine": "공개 데이터인 '치매 고위험군 웨어러블 라이프로그'은 안심존 입실 전 일주기 리듬 계산 수식 검증 및 베이스라인 코드 개발용으로 활용하고, 실제 민감 질환군 데이터('고령인구 우울증 데이터', 573)는 안심존 내에서 학습을 수행하여 결과 모델 파일만 반출한 뒤 통합 프로토콜 시스템에 탑재합니다.",
+    "export": [
+     "사회리듬 이상 감지 AI 모델 가중치 파일 (model.pt)",
+     "입력 피처 명세 및 임계치 설정 파일 (feature_names.json, threshold_config.json)",
+     "학습 성능 평가 결과 요약 및 Confusion Matrix 시각화 이미지 (ROC_curve.png)"
+    ],
+    "schedule": [
+     {
+      "period": "Day 1~5",
+      "task": "서버 접속 후 인터넷을 통해 필수 Python 패키지 설치 및 외부 검증 코드 업로드, 환경 점검"
+     },
+     {
+      "period": "Day 6~15",
+      "task": "데이터 마운트 후 작업 폴더로 데이터 복사, 라이프로그 및 음성 특징량 추출 파이프라인 실행"
+     },
+     {
+      "period": "Day 16~23",
+      "task": "사회리듬 붕괴 예측 딥러닝/머신러닝 모델 학습, 하이퍼파라미터 튜닝 및 성능 검증"
+     },
+     {
+      "period": "Day 24~27",
+      "task": "모델 아티팩트 및 반출용 요약 결과 정리 후 nasw/download에 배치, 1차 반출 심사 신청"
+     },
+     {
+      "period": "Day 28~30",
+      "task": "반출 심사 승인 확인 및 최종 반출물 수령 후 안심존 작업 종료"
+     }
+    ],
+    "cautions": [
+     "인터넷 허용 기간(초기 5일) 내에 라이브러리 설치와 코드 업로드를 끝내지 않고 데이터를 마운트할 경우 인터넷이 즉시 차단되므로 작업 순서를 엄격히 준수해야 합니다.",
+     "반출 신청 파일 내에 원본 데이터나 환자 식별자가 포함된 CSV/PKL 파일이 포함되면 반출 심사에서 반려되므로 가중치 파일 및 집계 지표만 포함해야 합니다.",
+     "반출 심사에는 통상 2~3영업일이 소요되므로 최소 이용 종료 3일 전(Day 27 이전)에 반출 신청을 완료해야 합니다."
+    ]
+   },
    "candidate_count": 60,
    "search": {
-    "matched": 37445,
+    "matched": 6026,
     "scanned_pool": 427,
     "keywords": [
-     "침수",
-     "도시침수",
-     "내수침수",
-     "침수흔적",
-     "침수예상",
-     "홍수위험지도",
-     "강우량",
-     "강수량",
-     "시우량",
-     "하천수위",
-     "하천 수위",
-     "수위관측소",
-     "배수펌프장",
-     "빗물펌프장",
-     "우수관로",
-     "우수관",
-     "빗물받이",
-     "저지대",
-     "수치표고모델",
-     "표고",
-     "도시",
-     "위험",
-     "지역",
-     "예측하고"
+     "양극성장애",
+     "조울증",
+     "우울증",
+     "수면",
+     "수면패턴",
+     "라이프로그",
+     "웨어러블",
+     "생체신호",
+     "활동량",
+     "정신건강",
+     "감정",
+     "정서",
+     "복약",
+     "행동패턴",
+     "조증",
+     "환자",
+     "리듬",
+     "사회적",
+     "상호작용",
+     "순응"
     ],
     "keyword_hits": {
-     "침수": 270,
-     "도시침수": 33,
-     "내수침수": 11,
-     "침수흔적": 6,
-     "침수예상": 1,
-     "홍수위험지도": 11,
-     "강우량": 134,
-     "강수량": 263,
-     "시우량": 2,
-     "하천수위": 7,
-     "하천 수위": 20,
-     "수위관측소": 34,
-     "배수펌프장": 86,
-     "빗물펌프장": 19,
-     "우수관로": 3,
-     "우수관": 21,
-     "빗물받이": 7,
-     "저지대": 21,
-     "수치표고모델": 8,
-     "표고": 98,
-     "도시": 9314,
-     "위험": 2937,
-     "지역": 31011,
-     "예측하고": 173
+     "양극성장애": 1,
+     "조울증": 4,
+     "우울증": 22,
+     "수면": 679,
+     "수면패턴": 0,
+     "라이프로그": 5,
+     "웨어러블": 10,
+     "생체신호": 5,
+     "활동량": 20,
+     "정신건강": 202,
+     "감정": 645,
+     "정서": 994,
+     "복약": 28,
+     "행동패턴": 1,
+     "조증": 0,
+     "환자": 1446,
+     "리듬": 8,
+     "사회적": 2323,
+     "상호작용": 57,
+     "순응": 43
     },
     "engine": "fts",
     "capped": false,
-    "cached": false
+    "cached": true
    },
    "manual_url": "https://aihub.or.kr/web-nas/aihub21/files/public/%ED%97%AC%EC%8A%A4%EC%BC%80%EC%96%B4_%EC%95%88%EC%8B%AC%EC%A1%B4%EC%82%AC%EC%9A%A9%EC%9E%90_%EB%A9%94%EB%89%B4%EC%96%BC.pdf",
    "dropped": 0,
-   "elapsed": 24.5,
+   "elapsed": 16.3,
    "usage": {
-    "prompt": 19217,
-    "output": 3268,
-    "thoughts": 1619,
-    "total": 24104,
-    "calls": 2,
+    "prompt": 18410,
+    "output": 3243,
+    "thoughts": 916,
+    "total": 22569,
+    "calls": 1,
     "cost": {
-     "usd": 0.017983,
-     "krw": 25.2,
+     "usd": 0.015921,
+     "krw": 22.3,
      "rate_in": 0.3,
      "rate_out": 2.5,
      "exact": false,

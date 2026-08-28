@@ -3,6 +3,9 @@
 AI Hub 데이터셋(975건)과 공공데이터포털 파일데이터(약 84,000건)를 한 화면에서 검색·비교하고,
 **Gemini에게 목적을 설명하면 필요한 데이터를 추천받는** 로컬 대시보드입니다.
 
+> 공개 사이트(Cloudflare Pages)로 올리는 방법은 [docs/Cloudflare-Pages-배포.md](docs/Cloudflare-Pages-배포.md) 를 보세요.
+> 파이썬 서버 없이 정적 샤드 + Pages Functions 로 같은 화면이 동작하고, AI 추천은 관리자가 켜고 끕니다.
+
 ```text
 대시보드 실행.bat          # http://localhost:8765 통합 화면
 데이터 갱신.bat            # AI Hub + 공공데이터 목록/상세 메타데이터 갱신
@@ -164,6 +167,10 @@ python publish_when_done.py --no-push    # 커밋까지만
 | `data/settings.json` | Gemini API 키·모델 (깃 제외) |
 | `index.html` | 기존 AI Hub 전용 대시보드(보존) |
 | `docs/안심존 사용 방법.md` | 안심존 이용·반출 절차 정리. AI 추천의 안심존 계획 근거 |
+| `docs/Cloudflare-Pages-배포.md` | 공개 사이트 배포 방법(GitHub 연동·KV·관리자 로그인) |
+| `build_static.py`, `build.sh` | 스냅샷 → 정적 JSON 샤드(`site/`) 빌드 |
+| `web/static-api.js` | 정적 모드에서 `/api/*` 를 대신하는 브라우저 데이터 계층 |
+| `functions/` | Pages Functions - Gemini 프록시, 관리자 로그인, 설정 저장(KV) |
 
 ### 서버 API
 | 엔드포인트 | 설명 |

@@ -16,3 +16,7 @@ __pycache__/
 *.tmp
 .DS_Store
 Thumbs.db
+
+# Cloudflare Pages 빌드 산출물 (build.sh 가 스냅샷에서 다시 만든다)
+site/
+.wrangler/

@@ -1,0 +1,9 @@
+/data/*
+  Content-Type: application/octet-stream
+  Cache-Control: public, max-age=3600, s-maxage=86400
+
+/static-api.js
+  Cache-Control: public, max-age=600
+
+/index.html
+  Cache-Control: public, max-age=60

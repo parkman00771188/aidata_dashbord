@@ -280,6 +280,13 @@
   .field .inline-check { display:flex; align-items:center; gap:6px; margin-top:9px; font-weight:500; font-size:12.5px; color:var(--muted); cursor:pointer; }
   .field .inline-check input { width:auto; height:auto; }
   .field select optgroup { font-weight:700; color:var(--ink); }
+  .admin-state { font-size:12.5px; padding:10px 12px; border-radius:10px; margin-bottom:12px; line-height:1.6; }
+  .admin-state.on { background:var(--green2); color:var(--green); }
+  .admin-state.off { background:var(--card-2); color:var(--muted); }
+  .admin-state.warn { background:var(--lock-bg); color:var(--lock); }
+  .admin-actions { display:flex; gap:8px; }
+  .admin-actions .btn { flex:1; }
+  #adminBox { border-bottom:1px dashed var(--line); padding-bottom:16px; }
   .modal footer { padding:14px 22px 20px; display:flex; gap:8px; justify-content:flex-end; }
   .toast { position:fixed; z-index:60; left:50%; bottom:88px; transform:translate(-50%,18px); opacity:0; color:#fff; background:#1f2b3d; padding:10px 16px; border-radius:10px; transition:.2s; pointer-events:none; max-width:90vw; }
   .toast.on { opacity:1; transform:translate(-50%,0); }
@@ -376,8 +383,23 @@
 </aside>
 
 <div class="modal-bg" id="settingsModal"><div class="modal">
-  <header><h3>AI 설정</h3><p>Gemini API 키와 모델을 지정하면 AI 추천 기능을 사용할 수 있습니다.</p></header>
+  <header><h3>AI 설정</h3><p id="setDesc">Gemini API 키와 모델을 지정하면 AI 추천 기능을 사용할 수 있습니다.</p></header>
   <div class="body">
+    <div id="adminBox" hidden>
+      <div class="admin-state" id="adminState"></div>
+      <div id="adminLogin" hidden>
+        <div class="field"><label for="admUser">관리자 아이디</label><input id="admUser" autocomplete="username" placeholder="admin"></div>
+        <div class="field"><label for="admPass">비밀번호</label><input id="admPass" type="password" autocomplete="current-password" placeholder="비밀번호"></div>
+        <button class="btn primary" id="admLogin" style="width:100%">로그인</button>
+      </div>
+      <div id="adminPanel" hidden>
+        <label class="inline-check" style="margin:0 0 10px"><input type="checkbox" id="aiEnabled"> <b>AI 추천 기능 켜기</b> — 방문자가 내 Gemini 키로 추천을 받을 수 있습니다</label>
+        <div class="admin-actions">
+          <button class="btn" id="admLogout">로그아웃</button>
+          <button class="btn danger" id="admClearKey">저장된 키 삭제</button>
+        </div>
+      </div>
+    </div>
     <div class="field">
       <label for="setKey">Gemini API 키</label>
       <input id="setKey" type="password" placeholder="AIza..." autocomplete="off">
@@ -396,6 +418,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="static-api.js" onerror="window.STATIC_MODE=false"></script>
 <script>
 (async function(){
   const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -415,8 +438,13 @@
   let pendingReco=null, pendingTimer=null;
 
   function notify(text){const el=$('#toast');el.textContent=text;el.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('on'),2200)}
-  async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m)}return r.json()}
-  async function post(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});let d={};try{d=await r.json()}catch(e){}if(!r.ok)throw new Error(d.error||r.statusText);return d}
+  async function api(path){
+    if(window.STATIC_API){const hit=await window.STATIC_API(path);if(hit!==null&&hit!==undefined)return hit}
+    const r=await fetch(path,{cache:'no-store'});if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m)}return r.json()}
+  async function post(path,body){
+    if(window.STATIC_POST){const hit=await window.STATIC_POST(path,body);if(hit!==null&&hit!==undefined)return hit}
+    const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{}),credentials:'same-origin'});
+    let d={};try{d=await r.json()}catch(e){}if(!r.ok)throw new Error(d.error||r.statusText);return d}
   function srcCount(name){return stats.sources.find(x=>x.source===name)?.count||0}
   function sourceParam(){return state.source==='aihub'?'aihub':state.source==='public'?'public':''}
   function params(){const p=new URLSearchParams();const s=sourceParam();if(s)p.set('source',s);if(state.q)p.set('q',state.q);state.fields.forEach(f=>p.append('field',f));if(state.format)p.set('format',state.format);if(state.preview)p.set('preview',state.preview);p.set('page',state.page);p.set('per',state.per);p.set('sort',state.sort);p.set('dir',state.dir);return p}
@@ -633,7 +661,8 @@
       ${usd?` · 예상 비용 ${usd}${won?' ('+won+')':''}`:''} · ${esc(r.model||'')} ${esc(c.exact?'공개 단가 기준':'동급 단가 추정')}</div>`}
   async function runRecommend(){if(aiBusy)return;const q=$('#aiInput').value.trim();
     if(q.length<3){notify('필요한 데이터를 조금 더 자세히 적어 주세요');return}
-    if(!settings.has_key){notify('먼저 오른쪽 위 설정에서 Gemini API 키를 입력해 주세요');openSettings();return}
+    const ready=settings.shared?(settings.enabled&&settings.has_key):settings.has_key;
+    if(!ready){notify(settings.shared?'AI 추천이 꺼져 있습니다. 관리자가 설정에서 켜야 합니다':'먼저 오른쪽 위 설정에서 Gemini API 키를 입력해 주세요');openSettings();return}
     aiBusy=true;$('#aiSubmit').disabled=true;
     // 누르는 즉시 목록에 자리를 만들고 진행 상황을 보여준다
     const started=Date.now();
@@ -658,8 +687,32 @@
 
   // ------------------------------------------------------------------ 설정
   async function loadSettings(){try{settings=await api('/api/settings')}catch(e){settings={has_key:false,model:''}}
-    $('#aiModelInfo').innerHTML=settings.has_key?`<span>모델 <b>${esc(settings.model)}</b></span>`:`<span>Gemini API 키 미설정 · 오른쪽 위 ⚙ 설정에서 등록</span>`}
-  function openSettings(){$('#settingsModal').classList.add('on');$('#setKey').value='';$('#setKey').placeholder=settings.has_key?settings.key_hint+' (변경할 때만 입력)':'AIza...';loadModels()}
+    const ready=settings.shared?(settings.enabled&&settings.has_key):settings.has_key;
+    $('#aiModelInfo').innerHTML=ready?`<span>모델 <b>${esc(settings.model)}</b>${settings.shared?' · 사이트 제공 키':''}</span>`
+      :(settings.shared?`<span>AI 추천이 꺼져 있습니다 · 관리자만 켤 수 있습니다</span>`
+                       :`<span>Gemini API 키 미설정 · 오른쪽 위 ⚙ 설정에서 등록</span>`)}
+  function openSettings(){$('#settingsModal').classList.add('on');$('#setKey').value='';
+    $('#setKey').placeholder=settings.has_key?settings.key_hint+' (변경할 때만 입력)':'AIza...';
+    renderAdmin();loadModels()}
+  // 공개 사이트(공유 키 모드)에서는 관리자 로그인 후에만 켜기/끄기·키 삭제가 가능하다.
+  function renderAdmin(){const shared=!!settings.shared;$('#adminBox').hidden=!shared;
+    if(!shared)return;
+    const admin=!!settings.admin;
+    $('#adminLogin').hidden=admin;$('#adminPanel').hidden=!admin;
+    $('#setKey').closest('.field').hidden=!admin;
+    $('#setModel').closest('.field').hidden=!admin;
+    $('#setSave').hidden=!admin;$('#setReload').hidden=!admin;
+    $('#aiEnabled').checked=!!settings.enabled;
+    const box=$('#adminState');
+    if(admin){box.className='admin-state '+(settings.enabled?'on':'off');
+      box.innerHTML=`관리자로 로그인했습니다. AI 추천 <b>${settings.enabled?'켜짐':'꺼짐'}</b>`
+        +(settings.has_key?` · 키 ${esc(settings.key_hint)} (${settings.key_source==='env'?'환경변수':'KV'})`:' · 저장된 키 없음')
+        +(settings.default_password?'<br>⚠ 기본 비밀번호를 쓰고 있습니다. Cloudflare 환경변수 <code>ADMIN_PASSWORD</code> 로 바꿔 주세요.':'');
+    }else{box.className='admin-state '+(settings.enabled&&settings.has_key?'on':'warn');
+      box.innerHTML=settings.enabled&&settings.has_key
+        ? 'AI 추천을 바로 쓸 수 있습니다. 설정 변경은 관리자만 가능합니다.'
+        : 'AI 추천이 <b>꺼져 있습니다</b>. 관리자가 로그인해 켜야 사용할 수 있습니다.';
+      $('#setDesc').textContent='AI 추천은 사이트 관리자가 등록한 키로 동작합니다.';}}
   function modelNote(id){const m=MODELS.find(x=>x.id===id);if(!m)return '';
     const lim=m.input_limit?` · 입력 ${fmt(m.input_limit)} 토큰`:'';
     return (m.note||lim)?`<br><b>${esc(m.id)}</b>${esc(m.note?' — '+m.note:'')}${lim}`:''}
@@ -709,6 +762,16 @@
     const it=e.target.closest('[data-reco]');if(it){activeReco=RECOS.find(x=>x.id===it.dataset.reco)||null;renderReco();$('#aiInput').value=activeReco?activeReco.query:'';window.scrollTo({top:0,behavior:'smooth'})}};
   $('#aiOut').onclick=e=>{const open=e.target.closest('[data-open]');if(open){openDetail(open.dataset.open);return}
     const pick=e.target.closest('[data-pick]');if(pick&&activeReco){const d=(activeReco.datasets||[]).find(x=>x.uid===pick.dataset.pick);if(d)togglePick(d)}};
+  $('#admLogin').onclick=async()=>{
+    try{const r=await post('/api/admin/login',{user:$('#admUser').value.trim(),password:$('#admPass').value});
+      settings=Object.assign({},settings,{admin:true,enabled:r.enabled,has_key:r.has_key,default_password:r.default_password});
+      await loadSettings();renderAdmin();loadModels();notify('관리자로 로그인했습니다')}
+    catch(e){notify(e.message)}};
+  $('#admLogout').onclick=async()=>{try{await post('/api/admin/login',{logout:true});await loadSettings();renderAdmin();notify('로그아웃했습니다')}catch(e){notify(e.message)}};
+  $('#aiEnabled').onchange=async e=>{try{settings=await post('/api/settings',{enabled:e.target.checked});renderAdmin();
+    notify(e.target.checked?'AI 추천을 켰습니다':'AI 추천을 껐습니다')}catch(err){notify(err.message);e.target.checked=!e.target.checked}};
+  $('#admClearKey').onclick=async()=>{if(!confirm('저장된 Gemini 키를 삭제할까요? AI 추천이 동작하지 않게 됩니다.'))return;
+    try{settings=await post('/api/settings',{clear_key:true,enabled:false});renderAdmin();notify('키를 삭제했습니다')}catch(e){notify(e.message)}};
   $('#openSettings').onclick=openSettings;
   $('#setCancel').onclick=()=>$('#settingsModal').classList.remove('on');
   $('#settingsModal').onclick=e=>{if(e.target.id==='settingsModal')$('#settingsModal').classList.remove('on')};
@@ -724,6 +787,9 @@
     try{settings=await post('/api/settings',body);await loadSettings();$('#settingsModal').classList.remove('on');notify('설정을 저장했습니다 · '+settings.model)}catch(e){notify(e.message)}};
 
   // ------------------------------------------------------------------ 시작
+  if(window.STATIC_PROGRESS)window.STATIC_PROGRESS(p=>{
+    if(p&&p.loading){$('#statusText').textContent=`검색 색인 불러오는 중 ${p.done}/${p.total}`;$('#statusDot').classList.remove('ok')}
+    else if(p&&p.count){$('#statusText').textContent=`검색 준비 완료 · ${fmt(p.count)}건`;$('#statusDot').classList.add('ok')}});
   try{
     await loadMy();await loadSettings();await loadStats();await loadFacets();await loadList();loadRecos();
     const qs=new URLSearchParams(location.search);
