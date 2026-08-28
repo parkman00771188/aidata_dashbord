@@ -195,6 +195,9 @@
   .rc.sz { border-color:var(--lock-line); background:linear-gradient(180deg,var(--lock-bg),var(--card) 26%); }
   .rc.sz h3 .n { background:var(--lock-bg); color:var(--lock); }
   .sz-note { font-size:13px; color:#7a5405; background:var(--lock-bg); border:1px solid var(--lock-line); border-radius:10px; padding:10px 13px; line-height:1.7; }
+  .sz-links { display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
+  .sz-links .btn { background:#fff; border-color:var(--lock-line); color:var(--lock); font-weight:700; }
+  .sz-links .btn:hover { border-color:var(--lock); background:var(--lock-bg); color:var(--lock); }
   .sz-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:11px; }
   .usechip.lock { background:var(--lock-bg); border-color:var(--lock-line); color:var(--lock); }
   .usechip.lock:hover { border-color:var(--lock); }
@@ -388,6 +391,7 @@
   const fmtBytes=b=>{if(!b)return '';const u=['B','KB','MB','GB','TB','PB'];let i=0,v=b;while(v>=1024&&i<u.length-1){v/=1024;i++}return (v>=100?v.toFixed(0):v>=10?v.toFixed(1):v.toFixed(2))+' '+u[i]};
   const labels={department:'관리부서명',contact:'관리부서 전화번호',basis:'보유근거',collection_method:'수집방법',update_cycle:'업데이트 주기',next_update:'차기 등록 예정일',media_type:'매체유형',row_count:'전체 행',extension:'확장자',limitations:'데이터 한계',delivery:'제공형태',notes:'기타 유의사항',spatial:'공간범위',temporal:'시간범위',paid:'비용부과유무',charge_basis:'비용부과기준 및 단위',license:'이용허락범위',created_at:'등록일',modified_at:'수정일',national_core:'국가중점여부',standardized:'표준데이터여부',classification:'분류체계',organization_code:'제공기관코드',file_name:'파일데이터명',api_type:'API 유형',traffic:'일 트래픽',review_type:'심의유형'};
   const AIHUB_SECTIONS={content:'개요 원문',meta:'메타데이터 구조표',stats:'데이터 통계',annotation:'어노테이션 / 데이터 구조',prcuseAi:'활용 AI 모델',prfomnc:'데이터 성능',autool:'저작도구',cnstcEntrps:'구축 업체'};
+  const MANUAL_URL='https://aihub.or.kr/web-nas/aihub21/files/public/%ED%97%AC%EC%8A%A4%EC%BC%80%EC%96%B4_%EC%95%88%EC%8B%AC%EC%A1%B4%EC%82%AC%EC%9A%A9%EC%9E%90_%EB%A9%94%EB%89%B4%EC%96%BC.pdf';
   const EXAMPLES=['우울증 조기선별 모델에 필요한 데이터','노인 낙상 예방 서비스를 만들고 싶어요','전기차 충전소 입지 분석용 데이터','한국어 음성인식 학습 데이터','수요예측 기반 재고관리 데이터','산불 위험 예측에 쓸 기상·산림 데이터'];
   const state={source:'all',q:'',fields:[],format:'',preview:'',page:1,per:+localStorage.getItem('catalog_per')||50,sort:'modified_at',dir:'desc'};
   let stats={total:0,sources:[],meta:{}}, facets={fields:[],formats:[]}, current=[], total=0;
@@ -556,6 +560,10 @@
     return `<div class="rc sz">
       <h3>🔒 안심존 이용 계획 <span class="n">${s.datasets.length}건은 다운로드 불가</span></h3>
       <div class="sz-note">아래 데이터는 내려받을 수 없습니다. <b>안심존 서버에 들어가 학습하고 소스코드와 모델 파일만 반출</b>하는 방식으로 써야 합니다.</div>
+      <div class="sz-links">
+        <a class="btn sm" href="${esc(r.manual_url||MANUAL_URL)}" target="_blank" rel="noopener" download>📄 안심존 사용자 매뉴얼 PDF 내려받기</a>
+        <a class="btn sm" href="https://aihub.or.kr/devsport/apishell/list.do?currMenu=118&topMenu=100" target="_blank" rel="noopener">안심존 이용 안내 ↗</a>
+      </div>
       <div class="sz-chips">${s.datasets.map(d=>`<button class="usechip lock" data-open="${esc(d.uid)}">🔒 ${esc(d.title)}</button>`).join('')}</div>
       ${s.combine?`<div class="sz-combine"><b>다운로드 데이터와 역할 나누기</b><div>${esc(s.combine)}</div></div>`:''}
       <div class="sz-grid">
@@ -570,8 +578,10 @@
     const won=c.krw!=null?(c.krw<1?'₩1 미만':'약 ₩'+fmt(Math.round(c.krw))):'';
     const usd=c.usd!=null?'$'+(c.usd<0.01?c.usd.toFixed(5):c.usd.toFixed(4)):'';
     const out=(u.output||0)+(u.thoughts||0);
+    const s=r.search;
+    const search=s?`검색어 ${esc((s.keywords||[]).join(', '))} · 매칭 ${fmt(s.matched||0)}건${s.capped?'+':''} 중 ${fmt(s.scanned_pool||0)}건을 정밀 검토해 ${fmt(r.candidate_count||0)}건을 후보로 올림<br>`:'';
     return `<div class="usage-line" title="${esc((c.basis||'')+' · 입력 $'+(c.rate_in||0)+' / 출력 $'+(c.rate_out||0)+' per 1M tokens · 환율 1,400원 가정')}">
-      이 추천에 토큰 ${fmt(u.total)}개 사용 (입력 ${fmt(u.prompt||0)} · 출력 ${fmt(out)}${u.thoughts?' 중 사고 '+fmt(u.thoughts):''} · 호출 ${fmt(u.calls||0)}회)
+      ${search}이 추천에 토큰 ${fmt(u.total)}개 사용 (입력 ${fmt(u.prompt||0)} · 출력 ${fmt(out)}${u.thoughts?' 중 사고 '+fmt(u.thoughts):''} · 호출 ${fmt(u.calls||0)}회)
       ${usd?` · 예상 비용 ${usd}${won?' ('+won+')':''}`:''} · ${esc(r.model||'')} ${esc(c.exact?'공개 단가 기준':'동급 단가 추정')}</div>`}
   async function runRecommend(){if(aiBusy)return;const q=$('#aiInput').value.trim();
     if(q.length<3){notify('필요한 데이터를 조금 더 자세히 적어 주세요');return}

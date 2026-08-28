@@ -8,6 +8,7 @@ API 키와 모델은 data/settings.json 에 저장한다(브라우저에는 키�
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import threading
@@ -21,6 +22,10 @@ from catalog_db import DATA_DIR, DB_PATH, connect, decode_json
 
 SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")
 RECO_PATH = os.path.join(DATA_DIR, "recommendations.json")
+KEYWORD_CACHE_PATH = os.path.join(DATA_DIR, "keyword_cache.json")
+SAFEZONE_MANUAL_URL = ("https://aihub.or.kr/web-nas/aihub21/files/public/"
+                       "%ED%97%AC%EC%8A%A4%EC%BC%80%EC%96%B4_%EC%95%88%EC%8B%AC%EC%A1%B4"
+                       "%EC%82%AC%EC%9A%A9%EC%9E%90_%EB%A9%94%EB%89%B4%EC%96%BC.pdf")
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 # 키를 저장하기 전에 보여줄 기본 목록. 키를 넣고 '모델 새로고침'을 누르면
 # 계정에서 실제 사용 가능한 최신 모델 목록으로 완전히 대체된다.
@@ -66,7 +71,15 @@ STOPWORDS = {
     "데이터", "데이터셋", "자료", "정보", "관련", "필요", "필요한", "활용", "위한", "위해", "대한",
     "그리고", "또는", "있는", "있음", "하는", "해서", "때문", "부탁", "추천", "알려줘", "찾아줘",
     "관한", "각종", "전체", "모든", "여러", "다양한", "기반", "구축", "사용", "이용", "분석",
+    # 질문 문장에서 흔히 나오는 서술어·군더더기
+    "합니다", "입니다", "습니다", "하려고", "정하려고", "만들려고", "만들고", "싶습니다", "싶어요",
+    "있습니다", "찾고", "알고", "하고", "통해", "결합", "엮어", "활용해", "이런", "저런", "어떤",
+    "무엇", "생각", "고민", "계획", "방법", "경우", "중인", "현재", "지금", "정도", "가지",
 }
+# 조사를 떼어 내기 위한 접미사 목록(긴 것부터 검사)
+PARTICLES = ("으로부터", "에서부터", "에게서", "으로서", "으로써", "이라는", "에서", "에게", "부터",
+             "까지", "보다", "처럼", "이나", "라도", "으로", "이랑", "와", "과", "을", "를", "이",
+             "가", "은", "는", "의", "에", "도", "만", "로", "랑")
 
 
 # --------------------------------------------------------------------------- 설정
@@ -292,7 +305,8 @@ def estimate_cost(model: str, usage: dict) -> dict:
     }
 
 
-def gemini_json(system: str, prompt: str, model: str = "", key: str = "", timeout: int = 180, usage=None):
+def gemini_json(system: str, prompt: str, model: str = "", key: str = "", timeout: int = 180,
+                usage=None, temperature: float = 0.25):
     settings = load_settings()
     key = key or settings.get("api_key") or ""
     model = model or settings.get("model") or DEFAULT_MODEL
@@ -302,7 +316,7 @@ def gemini_json(system: str, prompt: str, model: str = "", key: str = "", timeou
     payload = {
         "system_instruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.25, "responseMimeType": "application/json"},
+        "generationConfig": {"temperature": temperature, "responseMimeType": "application/json"},
     }
     data = _request(url, payload, key=key, timeout=timeout)
     _collect_usage(data, usage)
@@ -310,16 +324,144 @@ def gemini_json(system: str, prompt: str, model: str = "", key: str = "", timeou
 
 
 # --------------------------------------------------------------------------- 로컬 검색
+def _norm_query(query: str) -> str:
+    return re.sub(r"\s+", " ", (query or "").strip().lower())
+
+
+def cached_keywords(query: str):
+    """같은 질문이면 같은 검색어를 쓰도록 캐시한다.
+
+    Gemini 는 temperature 0 에서도 매번 조금씩 다른 키워드를 내놓아서
+    같은 질문인데 후보가 달라지는 원인이 된다. 캐시로 결과를 고정한다.
+    """
+    if not os.path.exists(KEYWORD_CACHE_PATH):
+        return None
+    try:
+        with open(KEYWORD_CACHE_PATH, encoding="utf-8") as f:
+            return (json.load(f) or {}).get(_norm_query(query))
+    except Exception:
+        return None
+
+
+def store_keywords(query: str, keywords, fields, goal: str = "") -> None:
+    with FILE_LOCK:
+        data = {}
+        if os.path.exists(KEYWORD_CACHE_PATH):
+            try:
+                with open(KEYWORD_CACHE_PATH, encoding="utf-8") as f:
+                    data = json.load(f) or {}
+            except Exception:
+                data = {}
+        data[_norm_query(query)] = {"keywords": list(keywords), "fields": list(fields),
+                                    "goal": goal, "at": time.strftime("%Y-%m-%d %H:%M:%S")}
+        if len(data) > 500:  # 오래된 것부터 정리
+            for key in sorted(data, key=lambda k: data[k].get("at", ""))[:len(data) - 500]:
+                data.pop(key, None)
+        os.makedirs(os.path.dirname(KEYWORD_CACHE_PATH), exist_ok=True)
+        tmp = KEYWORD_CACHE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, KEYWORD_CACHE_PATH)
+
+
+def strip_particle(token: str) -> str:
+    """'입지를' → '입지', '위치와' → '위치' 처럼 붙은 조사를 떼어 낸다."""
+    for particle in PARTICLES:
+        if len(token) > len(particle) + 1 and token.endswith(particle):
+            return token[:-len(particle)]
+    return token
+
+
 def tokenize(text: str) -> list:
     raw = re.split(r"[^0-9A-Za-z가-힣]+", text or "")
     out = []
     for token in raw:
-        token = token.strip()
+        token = strip_particle(token.strip())
         if len(token) < 2 or token in STOPWORDS:
             continue
         if token not in out:
             out.append(token)
     return out[:12]
+
+
+# 검색 대상 필드와 가중치 (SQL 안에서 한 번에 점수를 계산한다)
+SEARCH_FIELDS = (("i.title", 6.0), ("i.file_name", 3.0), ("i.keywords_json", 3.0),
+                 ("c.columns_text", 2.5), ("i.description", 1.5))
+SCAN_CAP = 30000        # 점수 계산에 올릴 최대 행 수
+GLOBAL_TOP = 160        # 종합 점수 상위
+PER_KEYWORD_TOP = 20    # 키워드마다 반드시 확보할 상위 건수
+
+
+def expand_keywords(keywords, query: str = "") -> list:
+    """Gemini 키워드를 우선하고, 모자란 만큼만 질문 토큰으로 채운다.
+
+    질문 토큰은 조사·서술어가 섞이기 쉬워 검색을 흐리므로 보조로만 쓴다.
+    """
+    out = []
+
+    def add(word):
+        word = str(word).strip()
+        if len(word) < 2 or word in STOPWORDS or word in out:
+            return
+        out.append(word)
+        nospace = word.replace(" ", "")
+        if nospace != word and len(nospace) >= 2 and nospace not in out:
+            out.append(nospace)
+
+    for kw in (keywords or []):
+        add(kw)
+    primary = len(out)
+    for token in tokenize(query):          # 질문 토큰은 최대 4개만 보충
+        if len(out) >= primary + 4 or len(out) >= 14:
+            break
+        add(token)
+    return out[:14]
+
+
+def _scan_scores(con, keywords, cap: int = SCAN_CAP):
+    """매칭되는 모든 행의 키워드별 점수를 한 번의 스캔으로 계산한다.
+
+    예전에는 다운로드순 상위 900건만 보고 점수를 매겨서, 관련도가 높아도
+    인기가 없는 데이터가 후보에 들어오지 못했다. 이제는 관련도 순으로 자른다.
+    """
+    parts, args = [], []
+    for kw in keywords:
+        like = "%" + kw + "%"
+        exprs = []
+        for col, weight in SEARCH_FIELDS:
+            exprs.append("(CASE WHEN %s LIKE ? THEN %s ELSE 0 END)" % (col, weight))
+            args.append(like)
+        parts.append("(" + "+".join(exprs) + ")")
+    names = ["k%d" % i for i in range(len(parts))]
+    inner = ",".join("%s %s" % (expr, name) for expr, name in zip(parts, names))
+    total = "+".join(names)
+    sql = (
+        "WITH m AS (SELECT i.uid uid,%s FROM catalog_items i "
+        "LEFT JOIN item_columns c ON c.uid=i.uid WHERE i.active=1) "
+        "SELECT uid,%s,(%s) total FROM m WHERE (%s)>0 ORDER BY total DESC LIMIT ?"
+        % (inner, ",".join(names), total, total)
+    )
+    args.append(cap)
+    return con.execute(sql, args).fetchall()
+
+
+def _fetch_rows(con, uids):
+    """고른 후보만 상세 정보를 읽어 온다."""
+    out = []
+    for i in range(0, len(uids), 400):
+        chunk = uids[i:i + 400]
+        sql = (
+            "SELECT i.uid,i.source,i.source_id,i.title,i.file_name,i.field,i.subfield,i.organization,"
+            "i.formats_json,i.keywords_json,substr(i.description,1,600) description,i.modified_at,"
+            "i.update_cycle,i.row_count,i.views,i.downloads,i.url,i.media_type,i.preview_status,"
+            "json_extract(i.detail_json,'$.delivery') delivery,"
+            "json_extract(i.detail_json,'$.extension') extension,"
+            "c.columns_json,c.n column_count "
+            "FROM catalog_items i LEFT JOIN item_columns c ON c.uid=i.uid "
+            "WHERE i.uid IN (%s)" % ",".join("?" * len(chunk))
+        )
+        out.extend(con.execute(sql, chunk).fetchall())
+    return out
 
 
 def _rows_for(con, keywords, use_description: bool, limit_rows: int):
@@ -348,33 +490,75 @@ def _rows_for(con, keywords, use_description: bool, limit_rows: int):
     return con.execute(sql, args).fetchall()
 
 
-def search_candidates(keywords, fields=None, limit: int = 40) -> list:
-    """키워드로 카탈로그를 검색하고 점수순 후보를 돌려준다."""
-    keywords = [k for k in (keywords or []) if k][:10]
+def search_candidates(keywords, fields=None, limit: int = 60, query: str = "") -> list:
+    """카탈로그 전체를 훑어 관련도 순으로 후보를 고른다.
+
+    1) 매칭되는 모든 행의 키워드별 점수를 한 번의 스캔으로 계산한다.
+    2) 흔한 낱말(예: '등록')은 IDF 로 가중치를 낮춰 정밀도를 지킨다.
+    3) 종합 점수 상위 + '키워드마다 상위 N건'을 함께 확보해 특정 키워드가 묻히지 않게 한다.
+    4) 고른 후보만 상세를 읽어 최종 점수를 매긴다.
+    """
+    keywords = expand_keywords(keywords, query)
     if not keywords:
         return []
     con = connect(DB_PATH, readonly=True)
     try:
-        rows = _rows_for(con, keywords, False, 900)
-        if len(rows) < 40:
-            rows = list(rows) + list(_rows_for(con, keywords, True, 900))
+        scan = _scan_scores(con, keywords)
+        if not scan:
+            return []
+        names = ["k%d" % i for i in range(len(keywords))]
+
+        # 키워드별 매칭 건수로 IDF 가중치 계산 (흔한 낱말일수록 낮게)
+        hits = [0] * len(keywords)
+        for row in scan:
+            for i, name in enumerate(names):
+                if row[name] > 0:
+                    hits[i] += 1
+        total_rows = max(1, len(scan))
+        idf = [max(0.35, math.log((total_rows + 1) / (h + 1)) / math.log(20) + 0.35) for h in hits]
+
+        # 재점수: 키워드 점수 x IDF
+        weighted = []
+        for row in scan:
+            score = sum(row[names[i]] * idf[i] for i in range(len(keywords)))
+            covered = sum(1 for i in range(len(keywords)) if row[names[i]] > 0)
+            weighted.append((score + covered * 3.0, row, covered))
+        weighted.sort(key=lambda x: -x[0])
+
+        chosen = []
+        seen = set()
+        for score, row, _cov in weighted[:GLOBAL_TOP]:
+            if row["uid"] not in seen:
+                seen.add(row["uid"])
+                chosen.append(row["uid"])
+        # 키워드마다 상위 건을 반드시 포함시켜 개념 하나가 통째로 빠지지 않게 한다
+        for i, name in enumerate(names):
+            per = sorted((r for r in scan if r[name] > 0), key=lambda r: -r[name])[:PER_KEYWORD_TOP]
+            for row in per:
+                if row["uid"] not in seen:
+                    seen.add(row["uid"])
+                    chosen.append(row["uid"])
+
+        rows = _fetch_rows(con, chosen)
+        stats = {"matched": len(scan), "scanned_pool": len(chosen), "keywords": keywords,
+                 "keyword_hits": dict(zip(keywords, hits)), "capped": len(scan) >= SCAN_CAP}
     finally:
         con.close()
 
+    by_uid = {r["uid"]: r for r in rows}
     fields = set(fields or [])
-    seen, scored = set(), []
-    for row in rows:
-        if row["uid"] in seen:
+    scored = []
+    for uid in chosen:
+        row = by_uid.get(uid)
+        if row is None:
             continue
-        seen.add(row["uid"])
         title = (row["title"] or "") + " " + (row["file_name"] or "")
         kws = row["keywords_json"] or ""
         desc = row["description"] or ""
         cols_text = row["columns_json"] or ""
-        score = 0.0
-        hits = 0
+        score, covered = 0.0, 0
         for i, kw in enumerate(keywords):
-            weight = 1.0 + max(0.0, (len(keywords) - i) / len(keywords))  # 앞쪽 키워드 가중
+            weight = idf[i]
             hit = False
             if kw in title:
                 score += 6 * weight
@@ -382,39 +566,40 @@ def search_candidates(keywords, fields=None, limit: int = 40) -> list:
             if kw in kws:
                 score += 3 * weight
                 hit = True
-            if kw in cols_text:  # 실제 데이터 항목에 있으면 실제로 쓸 수 있는 데이터다
+            if kw in cols_text:  # 실제 데이터 항목에 있으면 바로 쓸 수 있는 데이터다
                 score += 2.5 * weight
                 hit = True
             if kw in desc:
                 score += 1.5 * weight
                 hit = True
-            hits += 1 if hit else 0
-        if not hits:
+            covered += 1 if hit else 0
+        if not covered:
             continue
-        score += hits * 4  # 여러 키워드를 함께 만족하면 가산
+        score += covered * 4
         if row["field"] in fields:
             score += 5
         score += min(4.0, (row["downloads"] or 0) ** 0.35 / 6)
         if row["column_count"]:
-            score += 2  # 데이터 항목을 아는 데이터가 실제 활용 판단에 유리하다
+            score += 2
         if row["source"] == "AI Hub":
             score += 1.5  # AI 학습용 데이터는 목록이 적어 노출 기회를 보정
-        scored.append((score, dict(row)))
+        scored.append((score, dict(row), covered))
 
     scored.sort(key=lambda x: -x[0])
-    quota_ai = max(6, limit // 3)
-    picked, ai_n, pub_n = [], 0, 0
-    for score, row in scored:
+    quota_ai = max(8, limit // 3)
+    picked, ai_n = [], 0
+    for score, row, covered in scored:
         if len(picked) >= limit:
             break
         if row["source"] == "AI Hub":
             if ai_n >= quota_ai and len(picked) > limit * 0.6:
                 continue
             ai_n += 1
-        else:
-            pub_n += 1
         row["_score"] = round(score, 2)
+        row["_covered"] = covered
         picked.append(row)
+    if picked:
+        picked[0]["_stats"] = stats
     return picked
 
 
@@ -454,9 +639,16 @@ KEYWORD_PROMPT = """사용자 요구:
 아래 JSON 형식으로만 답하라.
 {{
   "goal": "요구를 한 문장으로 정리",
-  "keywords": ["검색 키워드 6~10개, 중요한 것부터"],
+  "keywords": ["검색 키워드 10~14개, 중요한 것부터"],
   "fields": ["다음 분야명 중 관련된 것만: {fields}"]
-}}"""
+}}
+
+키워드 규칙:
+- 목적을 이루는 데 필요한 서로 다른 개념을 빠짐없이 넣는다(대상·현상·장소·시설·지표 등).
+- 같은 뜻의 다른 표기도 함께 넣는다. 예) 전기차 / 전기자동차, 충전소 / 충전기,
+  정신건강 / 심리 / 상담, 인구 / 유동인구 / 주민등록.
+- 카탈로그의 데이터명이나 컬럼명에 실제로 등장할 법한 2~6글자 명사로 쓴다.
+- 조사·서술어('하는', '위한')와 '데이터', '정보' 같은 일반어는 넣지 않는다."""
 
 # 안심존(AI Hub 보건의료 등) 이용 규칙 요약 - docs/안심존 사용 방법.md 기반.
 # 안심존 데이터가 후보에 있을 때만 프롬프트에 붙인다.
@@ -529,7 +721,9 @@ RECO_PROMPT = """[사용자 목적]
 }}
 
 규칙:
-- datasets 는 중요도 순으로 최대 12개, '핵심'은 3~5개로 제한한다.
+- datasets 는 중요도 순으로 최대 15개. '핵심'은 3~5개로 제한하되,
+  목적에 조금이라도 쓸모 있는 후보는 빠뜨리지 말고 '보조'나 '참고'로라도 넣는다.
+  같은 성격의 데이터가 지역만 다르게 여러 건이면 대표적인 것들을 함께 넣어 준다.
 - items 는 반드시 해당 후보의 '데이터항목'에 실제로 있는 이름만 쓴다.
   항목 정보가 없는 후보(항목 정보 없음)는 items 를 비우고 why 에 "항목 미확인"이라고 적는다.
 - 데이터항목을 보고 목적에 쓸 값이 없다고 판단되면 그 후보는 아예 고르지 않는다.
@@ -634,26 +828,33 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
     model = model or settings.get("model") or DEFAULT_MODEL
     usage = {}
 
-    # 1단계 - 검색 키워드 추출
+    # 1단계 - 검색 키워드. 같은 질문은 캐시된 키워드를 재사용해 결과가 흔들리지 않게 한다.
     fields_available = fields_available or []
-    try:
+    cached = cached_keywords(query)
+    plan = {}
+    if cached and cached.get("keywords"):
+        keywords = list(cached["keywords"])
+        fields = [f for f in (cached.get("fields") or []) if f in set(fields_available)]
+        plan = {"goal": cached.get("goal", "")}
+        from_cache = True
+    else:
         plan = gemini_json(
             KEYWORD_SYSTEM,
             KEYWORD_PROMPT.format(query=query, fields=", ".join(fields_available[:40])),
-            model=model, timeout=90, usage=usage,
+            model=model, timeout=90, usage=usage, temperature=0.0,
         )
-    except AiError:
-        raise
-    keywords = [str(k).strip() for k in (plan.get("keywords") or []) if str(k).strip()][:10]
-    keywords = [k for k in keywords if k not in STOPWORDS]
-    if not keywords:
-        keywords = tokenize(query)
-    fields = [f for f in (plan.get("fields") or []) if f in set(fields_available)]
+        keywords = [str(k).strip() for k in (plan.get("keywords") or []) if str(k).strip()][:14]
+        keywords = [k for k in keywords if k not in STOPWORDS]
+        if not keywords:
+            keywords = tokenize(query)
+        fields = [f for f in (plan.get("fields") or []) if f in set(fields_available)]
+        store_keywords(query, keywords, fields, str(plan.get("goal") or ""))
+        from_cache = False
 
-    # 2단계 - 로컬 카탈로그 검색
-    candidates = search_candidates(keywords, fields, limit=42)
+    # 2단계 - 로컬 카탈로그 검색 (질문 원문 토큰도 함께 넣어 놓치는 데이터를 줄인다)
+    candidates = search_candidates(keywords, fields, limit=60, query=query)
     if not candidates:
-        candidates = search_candidates(tokenize(query), [], limit=42)
+        candidates = search_candidates(tokenize(query), [], limit=60, query=query)
     if not candidates:
         raise AiError("카탈로그에서 관련 데이터를 찾지 못했습니다. 다른 표현으로 다시 검색해 보세요. (검색어: %s)" % ", ".join(keywords))
 
@@ -668,12 +869,12 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
             safezone_schema=SAFEZONE_SCHEMA if has_safezone else "",
             safezone_rules=SAFEZONE_RULES if has_safezone else "",
         ),
-        model=model, timeout=240, usage=usage,
+        model=model, timeout=240, usage=usage, temperature=0.1,  # 같은 질문에 결과가 흔들리지 않게
     )
 
     by_uid = {row["uid"]: row for row in candidates}
     datasets, dropped = [], 0
-    for item in (result.get("datasets") or [])[:14]:
+    for item in (result.get("datasets") or [])[:16]:
         row = by_uid.get(str(item.get("uid", "")).strip())
         if row is None:
             dropped += 1
@@ -724,6 +925,8 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
         "missing": [str(m) for m in (result.get("missing") or [])][:5],
         "safezone": _safezone_plan(result, by_uid, datasets),
         "candidate_count": len(candidates),
+        "search": dict(candidates[0].get("_stats") or {}, cached=from_cache) if candidates else None,
+        "manual_url": SAFEZONE_MANUAL_URL,
         "dropped": dropped,
         "elapsed": round(time.time() - started, 1),
         "usage": dict(usage, cost=estimate_cost(model, usage)) if usage else None,

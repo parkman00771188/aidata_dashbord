@@ -1,5 +1,5 @@
 {
- "updated_at": "2026-08-27 17:32:42",
+ "updated_at": "2026-08-28 09:48:07",
  "items": {
   "aihub:208": {
    "sn": "208",
@@ -144,6 +144,80 @@
    "uid": "aihub:71965",
    "source": "AI Hub",
    "source_id": "71965"
+  },
+  "aihub:71401": {
+   "uid": "aihub:71401",
+   "source": "AI Hub",
+   "source_id": "71401",
+   "title": "고령인구 우울증 데이터",
+   "field": "헬스케어",
+   "organization": "전남대학교병원",
+   "formats": [
+    "오디오",
+    "텍스트"
+   ],
+   "description": "고령인구 대상으로 인지기능, 음성, 활동량, 수면, 디지털 데이터 및 의료데이터 획득을 통해 최신 인공지능 학습기술 적용이 가능한 데이터 구축",
+   "modified_at": "2024-10",
+   "row_count": 0,
+   "downloads": 180,
+   "url": "https://aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&aihubDataSe=data&dataSetSn=71401",
+   "access": {
+    "type": "안심존",
+    "tone": "lock",
+    "note": "이용신청 후 열람만 가능",
+    "size_bytes": 0
+   },
+   "added_at": "2026-08-28",
+   "memo": ""
+  },
+  "aihub:573": {
+   "uid": "aihub:573",
+   "source": "AI Hub",
+   "source_id": "573",
+   "title": "정신건강진단 및 예측을 위한 멀티모달 데이터",
+   "field": "헬스케어",
+   "organization": "전남대학교병원",
+   "formats": [
+    "오디오"
+   ],
+   "description": "환자군과 건강대조군을 대상으로 임상 의료데이터, 수면데이터, 음성, 라이프로그 데이터 획득을 통해 최신 인공지능 학습기술 적용이 가능한 데이터 구축",
+   "modified_at": "2022-07",
+   "row_count": 0,
+   "downloads": 242,
+   "url": "https://aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&aihubDataSe=data&dataSetSn=573",
+   "access": {
+    "type": "안심존",
+    "tone": "lock",
+    "note": "이용신청 후 열람만 가능",
+    "size_bytes": 0
+   },
+   "added_at": "2026-08-28",
+   "memo": ""
+  },
+  "aihub:86": {
+   "uid": "aihub:86",
+   "source": "AI Hub",
+   "source_id": "86",
+   "title": "감성 대화 말뭉치",
+   "field": "한국어",
+   "organization": "미디어젠",
+   "formats": [
+    "오디오",
+    "텍스트"
+   ],
+   "description": "크라우드 소싱 수행으로 일반인 1,500명을 대상으로 하여 음성 15,700문장 및 코퍼스 27만 문장 구축 및 세대별 감성 대화 텍스트 구축을 통해 감성 대화 엔진을 개발하여 세대별 감성 대화 서비스 제공",
+   "modified_at": "2022-12",
+   "row_count": 0,
+   "downloads": 14843,
+   "url": "https://aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&aihubDataSe=data&dataSetSn=86",
+   "access": {
+    "type": "다운로드",
+    "tone": "download",
+    "note": "",
+    "size_bytes": 21339737
+   },
+   "added_at": "2026-08-28",
+   "memo": ""
   }
  }
 }
