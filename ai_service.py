@@ -343,7 +343,7 @@ def cached_keywords(query: str):
         return None
 
 
-def store_keywords(query: str, keywords, fields, goal: str = "") -> None:
+def store_keywords(query: str, keywords, fields, goal: str = "", plan=None) -> None:
     with FILE_LOCK:
         data = {}
         if os.path.exists(KEYWORD_CACHE_PATH):
@@ -353,7 +353,8 @@ def store_keywords(query: str, keywords, fields, goal: str = "") -> None:
             except Exception:
                 data = {}
         data[_norm_query(query)] = {"keywords": list(keywords), "fields": list(fields),
-                                    "goal": goal, "at": time.strftime("%Y-%m-%d %H:%M:%S")}
+                                    "goal": goal, "plan": plan or {},
+                                    "at": time.strftime("%Y-%m-%d %H:%M:%S")}
         if len(data) > 500:  # 오래된 것부터 정리
             for key in sorted(data, key=lambda k: data[k].get("at", ""))[:len(data) - 500]:
                 data.pop(key, None)
@@ -541,52 +542,132 @@ def _rows_for(con, keywords, use_description: bool, limit_rows: int):
     return con.execute(sql, args).fetchall()
 
 
-def search_candidates(keywords, fields=None, limit: int = 60, query: str = "") -> list:
-    """질문에 맞는 후보를 폭넓게 찾는다.
+# 데이터명 앞에 붙는 지역 접두어 - 같은 데이터의 지역별 복제본을 묶고, 지역 지정 질문에서
+# 다른 지역 데이터를 뒤로 보낼 때 쓴다.
+REGION_WORDS = ("서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원",
+                "충북", "충남", "충청", "전북", "전남", "전라", "경북", "경남", "경상", "제주")
+REGION_ALIASES = {
+    "서울": ["서울"], "부산": ["부산"], "대구": ["대구"], "인천": ["인천"], "광주": ["광주"],
+    "대전": ["대전"], "울산": ["울산"], "세종": ["세종"], "경기": ["경기"], "강원": ["강원"],
+    "충북": ["충북", "충청북도"], "충남": ["충남", "충청남도"], "전북": ["전북", "전라북도"],
+    "전남": ["전남", "전라남도"], "경북": ["경북", "경상북도"], "경남": ["경남", "경상남도"],
+    "제주": ["제주"],
+}
+_ORG_PREFIX_RE = re.compile(r"^[^_]{2,40}_")
+_NON_WORD_RE = re.compile(r"[\s\d\(\)\[\]·\-_,./]+")
+MEDIA_WORDS = {"이미지": ("이미지", "영상", "jpg", "png", "image"), "영상": ("영상", "비디오", "video", "mp4"),
+               "음성": ("음성", "오디오", "wav", "audio"), "텍스트": ("텍스트", "말뭉치", "text", "json")}
 
-    - 3글자 이상 키워드는 FTS5(trigram) 색인으로 즉시 조회하므로 키워드를 많이 써도 빠르다.
-    - 키워드마다 상위 N건을 반드시 확보해 특정 개념이 통째로 빠지지 않게 한다.
-    - 흔한 낱말은 IDF 로 가중치를 낮춰 정밀도를 지킨다.
+
+def region_terms(region: str) -> list:
+    """'제주도' → ['제주'] 처럼 데이터명에 실제로 나타나는 형태로 정규화한다."""
+    region = (region or "").strip()
+    if not region:
+        return []
+    for key, aliases in REGION_ALIASES.items():
+        if region.startswith(key) or any(region.startswith(a) for a in aliases):
+            return aliases
+    return [region[:2]] if len(region) >= 2 else []
+
+
+def title_group_key(title: str) -> str:
+    """지역·기관 접두어와 숫자를 뺀 데이터명. 지역별 복제본을 한 묶음으로 본다."""
+    t = _ORG_PREFIX_RE.sub("", title or "", count=1)
+    for w in REGION_WORDS:
+        t = t.replace(w, "")
+    return _NON_WORD_RE.sub("", t).lower()[:40]
+
+
+def has_other_region(title: str, wanted: list) -> bool:
+    """질문의 지역이 아닌 다른 지역 접두어로 시작하는 데이터명인가."""
+    head = (title or "")[:14]
+    if any(w in head for w in wanted):
+        return False
+    return any(w in head for w in REGION_WORDS)
+
+
+def truthy(v) -> bool:
+    return str(v).strip().lower() in ("true", "1", "yes", "예", "y")
+
+
+def search_candidates(keywords, fields=None, limit: int = 60, query: str = "", plan=None) -> list:
+    """질문에 맞는 후보를 폭넓게, 그러나 정확하게 찾는다.
+
+    plan(키워드 단계 결과)의 core/related/region/modality/wants_ai_training 을 반영한다.
+    - core(핵심 개념)는 related(확장어)보다 2배 가중하고, 핵심을 하나도 안 맞춘 데이터는 뺀다.
+      → '코퍼스'처럼 희귀하지만 무관한 확장어가 결과를 끌고 가는 일을 막는다.
+    - 지역이 지정되면 그 지역 데이터에 가점, 다른 지역 접두어 데이터에 감점.
+    - AI 학습 목적이면 AI Hub 학습데이터에 가점, 원하는 형태(이미지 등)와 맞으면 추가 가점.
+    - 같은 데이터의 지역별 복제본은 묶음당 최대 3건만 남겨 후보 60건이 다양해지게 한다.
     """
-    keywords = expand_keywords(keywords, query)
+    plan = plan or {}
+    core = [str(k).strip() for k in (plan.get("core") or []) if str(k).strip()]
+    related = [str(k).strip() for k in (plan.get("related") or []) if str(k).strip()]
+    if not core and not related:
+        related = list(keywords or [])
+    keywords = expand_keywords(core + related, query)
     if not keywords:
         return []
+    core_set = set(core) | {k.replace(" ", "") for k in core}
+    wanted_region = region_terms(plan.get("region") or "")
+    wants_ai = truthy(plan.get("wants_ai_training", ""))
+    modality = {str(m).strip() for m in (plan.get("modality") or [])}
+    semantic_picks = {"aihub:%s" % str(x).replace("aihub:", "") for x in (plan.get("aihub_picks") or [])}
+
     con = connect(DB_PATH, readonly=True)
     try:
         use_fts = has_fts(con)
         hits = _fts_hits(con, keywords) if use_fts else _scan_scores(con, keywords)
+        # 지역 자체도 검색해 두면 그 지역 데이터가 후보풀에 확실히 들어온다
+        region_hits = _fts_hits(con, wanted_region) if (use_fts and wanted_region) else []
         matched = set()
         for bucket in hits:
+            matched.update(bucket)
+        for bucket in region_hits:
             matched.update(bucket)
         if not matched:
             return []
 
-        # 흔한 낱말일수록 가중치를 낮춘다
         total_rows = max(1, len(matched))
         idf = [max(0.35, math.log((total_rows + 1) / (len(b) + 1)) / math.log(20) + 0.35) for b in hits]
+        is_core = [kw in core_set for kw in keywords]
 
-        combined = {}
+        combined = {}   # uid -> [score, core_hits, related_hits]
+        core_rel = {}   # uid -> (core_score, related_score)
         for i, bucket in enumerate(hits):
-            weight = idf[i]
+            weight = idf[i] * (2.0 if is_core[i] else 1.0)
             for uid, raw in bucket.items():
-                slot = combined.setdefault(uid, [0.0, 0])
+                slot = combined.setdefault(uid, [0.0, 0, 0])
                 slot[0] += raw * weight
-                slot[1] += 1
-        ranked = sorted(combined.items(), key=lambda kv: -(kv[1][0] + kv[1][1] * 3.0))
+                slot[1 if is_core[i] else 2] += 1
+                cs, rs = core_rel.get(uid, (0.0, 0.0))
+                core_rel[uid] = (cs + raw * weight, rs) if is_core[i] else (cs, rs + raw * weight)
+        for bucket in region_hits:
+            for uid in bucket:
+                combined.setdefault(uid, [0.0, 0, 0])
+        for uid in semantic_picks:
+            combined.setdefault(uid, [0.0, 1, 0])   # 핵심 1개 맞춘 것으로 간주해 제외되지 않게
+            matched.add(uid)
 
+        def base_rank(slot):
+            return slot[0] + slot[1] * 6.0 + slot[2] * 1.5
+        ranked = sorted(combined.items(), key=lambda kv: -base_rank(kv[1]))
         chosen, seen = [], set()
-        for uid, _ in ranked[:GLOBAL_TOP]:
-            seen.add(uid)
+        for uid in semantic_picks:      # 의미 기반 선별 결과는 문자열 점수와 무관하게 반드시 포함
+            seen.add(uid)               # (없는 uid 는 _fetch_rows 에서 자연히 걸러진다)
             chosen.append(uid)
-        # 키워드마다 상위 건을 반드시 포함시킨다
-        for bucket in hits:
+        for uid, _ in ranked[:GLOBAL_TOP * 2]:
+            if uid not in seen:
+                seen.add(uid)
+                chosen.append(uid)
+        for bucket in hits:  # 키워드마다 상위 건은 반드시 확보
             for uid, _raw in sorted(bucket.items(), key=lambda kv: -kv[1])[:PER_KEYWORD_TOP]:
                 if uid not in seen:
                     seen.add(uid)
                     chosen.append(uid)
-
         rows = _fetch_rows(con, chosen)
         stats = {"matched": len(matched), "scanned_pool": len(chosen), "keywords": keywords,
+                 "core": core, "region": wanted_region, "modality": sorted(modality), "wants_ai": wants_ai,
                  "keyword_hits": {kw: len(b) for kw, b in zip(keywords, hits)},
                  "engine": "fts" if use_fts else "scan", "capped": False}
     finally:
@@ -594,34 +675,76 @@ def search_candidates(keywords, fields=None, limit: int = 60, query: str = "") -
 
     by_uid = {r["uid"]: r for r in rows}
     fields = set(fields or [])
-    scored = []
+    scored, fallback = [], []
     for uid in chosen:
         row = by_uid.get(uid)
         if row is None:
             continue
-        base, covered = combined.get(uid, [0.0, 0])
-        if not covered:
-            continue
-        score = base + covered * 4
+        base, core_hits, rel_hits = combined.get(uid, [0.0, 0, 0])
+        title = row["title"] or ""
+        # 핵심 개념을 하나도 안 맞췄으면 제외(지역만 맞은 데이터도 마찬가지)
+        relaxed = False
+        if row["uid"] not in semantic_picks:
+            if not core and rel_hits == 0:
+                continue
+            if core and core_hits == 0:
+                if rel_hits < 2:
+                    continue
+                relaxed = True   # 핵심은 못 맞췼지만 확장어를 2개 이상 맞춘 예비 후보
+        core_score, rel_score = core_rel.get(uid, (0.0, 0.0))
+        # 확장어는 많이 맞춰도 일정 이상 점수를 못 쌓게 해서(상한 30), 핵심 개념 일치가 순위를 정하게 한다
+        score = core_score + min(rel_score, 30.0) + core_hits * 6.0 + min(rel_hits, 4) * 1.5
+        if wanted_region:
+            org = row["organization"] or ""
+            if any(w in title or w in org for w in wanted_region):
+                score += 15
+            elif has_other_region(title, wanted_region):
+                score -= 6
         if row["field"] in fields:
-            score += 5
+            score += 3
         score += min(4.0, (row["downloads"] or 0) ** 0.35 / 6)
         if row["column_count"]:
-            score += 2  # 데이터 항목을 아는 데이터가 실제 활용 판단에 유리하다
+            score += 2
+        fmt_text = ((row["formats_json"] or "") + " " + (row["media_type"] or "") + " " + title).lower()
+        media_match = bool(modality) and any(any(w in fmt_text for w in MEDIA_WORDS.get(m, ())) for m in modality)
+        visual = bool(modality & {"이미지", "영상", "음성"})
         if row["source"] == "AI Hub":
-            score += 1.5  # AI 학습용 데이터는 목록이 적어 노출 기회를 보정
-        scored.append((score, dict(row), covered))
+            if wants_ai:
+                score = score * (1.5 if media_match else 1.2) + 8
+            else:
+                score += 1.5
+        elif wants_ai and visual and not media_match:
+            score *= 0.6   # 이미지·음성 학습이 목적인데 정형 통계만 있는 데이터는 뒤로
+        if row["uid"] in semantic_picks:
+            score += 40    # AI Hub 의미 기반 선별에서 뽑힌 데이터는 반드시 후보에 들어가게
+        if relaxed:
+            fallback.append((score * 0.5, dict(row), core_hits + rel_hits))
+        else:
+            scored.append((score, dict(row), core_hits + rel_hits))
 
     scored.sort(key=lambda x: -x[0])
+    # 핵심 개념이 드문 낱말이라 후보가 너무 적으면(20개 미만) 예비 후보로 채운다.
+    # 예) '욕설·혐오표현'은 데이터명에 거의 없어 후보가 12개에 그친다.
+    if len(scored) < 20 and fallback:
+        fallback.sort(key=lambda x: -x[0])
+        scored.extend(fallback[:max(0, 40 - len(scored))])
+    # 다양성: 같은 데이터의 지역별 복제본은 묶음당 3건까지(질문 지역과 맞는 건 예외)
+    group_count = {}
     quota_ai = max(8, limit // 3)
     picked, ai_n = [], 0
     for score, row, covered in scored:
         if len(picked) >= limit:
             break
+        title = row["title"] or ""
+        key = title_group_key(title)
+        is_wanted_region = bool(wanted_region) and any(w in title for w in wanted_region)
+        if not is_wanted_region and group_count.get(key, 0) >= 3:
+            continue
         if row["source"] == "AI Hub":
-            if ai_n >= quota_ai and len(picked) > limit * 0.6:
+            if ai_n >= quota_ai * (2 if wants_ai else 1) and len(picked) > limit * 0.6:
                 continue
             ai_n += 1
+        group_count[key] = group_count.get(key, 0) + 1
         row["_score"] = round(score, 2)
         row["_covered"] = covered
         picked.append(row)
@@ -666,20 +789,25 @@ KEYWORD_PROMPT = """사용자 요구:
 아래 JSON 형식으로만 답하라.
 {{
   "goal": "요구를 한 문장으로 정리",
-  "keywords": ["검색 키워드 16~22개, 중요한 것부터"],
+  "core": ["반드시 데이터에 들어 있어야 하는 핵심 개념 3~6개. 이것이 없는 데이터는 쓸모가 없다"],
+  "related": ["핵심을 넓혀 주는 동의어·표기변형·관련 지표·기관명 10~16개"],
+  "region": "요구에 특정 지역이 있으면 그 지역명(예: 제주, 부산, 서울). 없으면 빈 문자열",
+  "modality": ["원하는 데이터 형태. 이미지 / 텍스트 / 음성 / 영상 / 정형 중 해당하는 것만"],
+  "wants_ai_training": "AI 모델을 학습·개발하려는 목적이면 true, 통계·현황 파악이면 false",
   "fields": ["다음 분야명 중 관련된 것만: {fields}"]
 }}
 
-키워드 규칙:
-- 목적을 이루는 데 필요한 서로 다른 개념을 빠짐없이 넣는다(대상·현상·장소·시설·지표 등).
-- 검색은 매우 빠르므로 넉넉하게 넣는다. 놓치는 것보다 조금 넓게 잡는 편이 낫다.
-- 같은 뜻의 다른 표기를 반드시 함께 넣는다. 예) 전기차 / 전기자동차 / 친환경차,
-  충전소 / 충전기 / 충전시설, 정신건강 / 심리 / 상담 / 정신질환,
-  인구 / 유동인구 / 주민등록 / 세대수, 침수 / 홍수 / 강우 / 하천수위.
+규칙:
+- core 는 '이 데이터가 없으면 목적을 이룰 수 없다'는 개념만 넣는다. 예) 병해충 진단 AI → 병해충, 작물, 이미지
+- related 는 넉넉히 넣되 core 와 무관한 일반어(말뭉치, 데이터, 현황, 정보)는 넣지 않는다.
+- 같은 뜻의 다른 표기를 함께 넣는다. 예) 전기차/전기자동차/친환경차, 충전소/충전기, 정신건강/심리/상담.
 - 붙여 쓴 형태와 띄어 쓴 형태가 다르면 둘 다 넣는다. 예) 전기차충전소 / 전기차 충전소.
-- 데이터가 담길 만한 기관·제도 이름도 넣는다. 예) 정신건강복지센터, 청소년상담복지센터.
-- 카탈로그의 데이터명이나 컬럼명에 실제로 등장할 법한 2~6글자 명사로 쓴다.
-- 조사·서술어('하는', '위한')와 '데이터', '정보' 같은 일반어는 넣지 않는다."""
+- 데이터가 담길 만한 기관·제도 이름도 related 에 넣는다. 예) 정신건강복지센터, 농촌진흥청.
+- 모든 키워드는 카탈로그의 데이터명이나 컬럼명에 실제로 등장할 법한 2~6글자 한국어 명사로 쓴다.
+- AI 학습데이터는 '윤리검증', '질병 진단', '감성 대화'처럼 중립적·기술적 이름을 쓰는 경우가 많다.
+  민감하거나 구어적인 주제(욕설·혐오·사고·질병 등)는 데이터명이 쓸 법한 중립어도 related 에 넣는다.
+- 조사·서술어('하는', '위한', '만들고')와 '데이터', '정보' 같은 일반어는 넣지 않는다."""
+
 
 # 안심존(AI Hub 보건의료 등) 이용 규칙 요약 - docs/안심존 사용 방법.md 기반.
 # 안심존 데이터가 후보에 있을 때만 프롬프트에 붙인다.
@@ -722,7 +850,7 @@ RECO_SYSTEM = (
 )
 RECO_PROMPT = """[사용자 목적]
 \"\"\"{query}\"\"\"
-
+{summary}
 [후보 데이터 목록]
 {candidates}
 {safezone_guide}
@@ -752,19 +880,27 @@ RECO_PROMPT = """[사용자 목적]
 }}
 
 규칙:
-- datasets 는 중요도 순으로 최대 15개. '핵심'은 3~5개로 제한하되,
-  목적에 조금이라도 쓸모 있는 후보는 빠뜨리지 말고 '보조'나 '참고'로라도 넣는다.
-  같은 성격의 데이터가 지역만 다르게 여러 건이면 대표적인 것들을 함께 넣어 준다.
+- datasets 는 중요도 순으로 최대 15개. '핵심'은 3~5개로 제한한다.
+  목적에 직접 관련된 후보는 놓치지 말되, 무관한 데이터로 개수를 채우지 않는다.
+  맞는 데이터가 3~4개뿐이면 그만큼만 추천한다.
+- 같은 성격의 데이터가 여러 건이면(예: 격자 크기만 다른 유동인구 데이터) 가장 알맞은 1~2개를 고른다.
 - items 는 반드시 해당 후보의 '데이터항목'에 실제로 있는 이름만 쓴다.
-  항목 정보가 없는 후보(항목 정보 없음)는 items 를 비우고 why 에 "항목 미확인"이라고 적는다.
-- 데이터항목을 보고 목적에 쓸 값이 없다고 판단되면 그 후보는 아예 고르지 않는다.
+  항목 정보가 없는 후보(항목 정보 없음)는 데이터명·설명·행수로 판단하고, items 는 비우고
+  why 에 "항목 미확인"이라고 적는다. 항목 정보가 없다는 이유만으로 제외하지 않는다.
+- 데이터항목이 있는데 목적에 쓸 값이 전혀 없다고 판단되면 그 후보는 고르지 않는다.
+- '★ AI Hub 전문가 검토' 표시가 붙은 후보는 데이터명이 목적과 달라 보여도 내용이 맞는 것으로 확인된 것이다.
+  특별한 이유가 없으면 '핵심' 또는 '보조'로 포함하고, 그 근거를 why 에 반영한다.
 - features 의 data_need 도 가능하면 후보들의 실제 데이터항목 이름으로 적는다.
 - pipeline 의 detail 은 "A 데이터의 X 항목과 B 데이터의 Y 항목을 Z 기준으로 결합한다" 처럼
   실제 데이터명과 항목명을 넣어 쓴다. 일반론("전처리한다", "모델을 학습한다")만 쓰지 않는다.
 - 설명 문장에서는 uid 대신 사람이 읽는 데이터명을 쓴다. uid 는 uses 와 datasets 에만 넣는다.
 - pipeline 의 uses 에는 datasets 에 넣은 uid 만 쓴다.
 - features 는 3~6개, pipeline 은 4~6단계로 만든다.
-- 후보에 마땅한 데이터가 없으면 datasets 를 비우고 missing 에 이유를 적는다.{safezone_rules}"""
+- 후보에 마땅한 데이터가 없으면 datasets 를 비우고 missing 에 이유를 적는다.
+- 특정 지역이 지정된 요구라면 그 지역 데이터를 우선 고르고, 다른 지역의 같은 종류 데이터는
+  방법론 참고용으로 1~2개만 '참고'에 넣는다.
+- AI 학습 목적이고 원하는 형태가 이미지·음성·영상이면 그 형태의 학습 데이터(주로 AI Hub)를
+  핵심에 두고, 통계·현황 데이터는 라벨·보조 정보로 배치한다.{safezone_rules}"""
 
 SAFEZONE_RULES = """
 - 제공방식이 '안심존'인 데이터를 추천했다면 safezone_plan 을 반드시 채운다.
@@ -803,10 +939,12 @@ def columns_of(row) -> list:
     return decode_json(row.get("columns_json") if isinstance(row, dict) else row["columns_json"], []) or []
 
 
-def _candidate_block(rows, aihub_access) -> str:
+def _candidate_block(rows, aihub_access, pick_reasons=None) -> str:
+    pick_reasons = pick_reasons or {}
     lines = []
     for row in rows:
         acc = access_of(row, aihub_access)
+        reason = pick_reasons.get(str(row.get("source_id") or "")) if row.get("source") == "AI Hub" else ""
         formats = ", ".join(decode_json(row.get("formats_json"), []) or [])
         kws = ", ".join((decode_json(row.get("keywords_json"), []) or [])[:6])
         desc = re.sub(r"\s+", " ", (row.get("description") or ""))[:200]
@@ -816,17 +954,90 @@ def _candidate_block(rows, aihub_access) -> str:
             col_text = "%s%s (총 %d개)" % (shown[:320], " …" if len(cols) > 18 else "", len(cols))
         else:
             col_text = "(항목 정보 없음)"
-        lines.append(
+        text = (
             "- uid: {uid} | 출처: {source} | 데이터명: {title} | 분야: {field}{sub} | 제공기관: {org} | "
             "형식: {formats} | 제공방식: {acc} | 행수: {rows} | 갱신: {mod}\n"
             "  데이터항목: {cols}\n"
-            "  키워드: {kws} | 설명: {desc}".format(
-                uid=row["uid"], source=row["source"], title=row["title"], field=row.get("field") or "-",
-                sub=(" > " + row["subfield"]) if row.get("subfield") else "", org=row.get("organization") or "-",
-                formats=formats or "-", acc=acc["type"], rows=row.get("row_count") or "-",
-                mod=row.get("modified_at") or "-", cols=col_text, kws=kws or "-", desc=desc or "-")
-        )
+            "  키워드: {kws} | 설명: {desc}"
+        ).format(
+            uid=row["uid"], source=row["source"], title=row["title"], field=row.get("field") or "-",
+            sub=(" > " + row["subfield"]) if row.get("subfield") else "", org=row.get("organization") or "-",
+            formats=formats or "-", acc=acc["type"], rows=row.get("row_count") or "-",
+            mod=row.get("modified_at") or "-", cols=col_text, kws=kws or "-", desc=desc or "-")
+        if reason:   # 의미 기반 선별에서 뽑힌 AI Hub 데이터는 그 근거를 함께 보여 준다
+            text += "\n  ★ AI Hub 전문가 검토: 목적에 적합 - " + reason
+        lines.append(text)
     return "\n".join(lines)
+
+
+AIHUB_PICK_SYSTEM = (
+    "너는 AI 학습데이터 카탈로그(AI Hub) 전문가다. 사용자의 목적을 읽고 아래 데이터셋 목록에서 "
+    "실제로 학습·검증에 쓸 수 있는 것을 고른다. 데이터명이 목적과 다른 말로 쓰여 있어도 "
+    "내용상 맞으면 고른다(예: 욕설 필터 → '텍스트 윤리검증 데이터', 병해충 진단 → '작물 질병 진단 이미지'). "
+    "목록에 없는 것은 절대 만들지 않고 JSON만 출력한다."
+)
+AIHUB_PICK_PROMPT = """[사용자 목적]
+\"\"\"{query}\"\"\"
+핵심 개념: {core}
+원하는 형태: {modality}
+
+[AI Hub 데이터셋 목록 - sn | 데이터명 | 분야 | 유형]
+{catalog}
+
+목적에 직접 쓸 수 있는 데이터셋의 sn 을 관련도 순으로 최대 8개 골라라. 없으면 빈 배열.
+{{"picks": [{{"sn": "숫자", "why": "왜 맞는지 한 문장"}}]}}"""
+
+_AIHUB_CATALOG_CACHE = {"stamp": None, "text": ""}
+
+
+def aihub_catalog_text() -> str:
+    """AI Hub 975건의 sn|제목|분야|유형 목록(약 15K 토큰). 파일이 바뀔 때만 다시 만든다."""
+    path = os.path.join(DATA_DIR, "datasets.json")
+    try:
+        stamp = os.path.getmtime(path)
+    except OSError:
+        return ""
+    if _AIHUB_CATALOG_CACHE["stamp"] == stamp:
+        return _AIHUB_CATALOG_CACHE["text"]
+    try:
+        with open(path, encoding="utf-8") as f:
+            items = json.load(f).get("datasets", [])
+    except Exception:
+        return ""
+    lines = []
+    for it in items:
+        lines.append("%s | %s | %s | %s" % (it.get("sn"), (it.get("title") or "")[:60],
+                                            it.get("field") or "", ",".join(it.get("types") or [])))
+    text = "\n".join(lines)
+    _AIHUB_CATALOG_CACHE.update(stamp=stamp, text=text)
+    return text
+
+
+def aihub_semantic_pick(query: str, plan: dict, model: str = "", usage=None) -> list:
+    """AI Hub 전체 제목을 보여 주고 목적에 맞는 것을 의미로 고르게 한다.
+
+    AI Hub 데이터명은 '텍스트 윤리검증 데이터'처럼 개념적으로 지어져 문자열 검색으로는
+    놓치기 쉽다. 975건이라 전체를 한 번에 보여 줄 수 있어 이 방식이 가능하다.
+    """
+    catalog = aihub_catalog_text()
+    if not catalog:
+        return []
+    try:
+        data = gemini_json(
+            AIHUB_PICK_SYSTEM,
+            AIHUB_PICK_PROMPT.format(query=query, core=", ".join(plan.get("core") or []) or "-",
+                                     modality=", ".join(plan.get("modality") or []) or "-", catalog=catalog),
+            model=model, timeout=120, usage=usage, temperature=0.0,
+        )
+    except AiError:
+        return []
+    picks, reasons = [], {}
+    for p in (data.get("picks") or [])[:8]:
+        sn = re.sub(r"\D", "", str(p.get("sn") or ""))
+        if sn and sn not in picks:
+            picks.append(sn)
+            reasons[sn] = str(p.get("why") or "").strip()[:120]
+    return picks, reasons
 
 
 def _safezone_plan(result: dict, by_uid: dict, datasets: list):
@@ -862,28 +1073,40 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
     # 1단계 - 검색 키워드. 같은 질문은 캐시된 키워드를 재사용해 결과가 흔들리지 않게 한다.
     fields_available = fields_available or []
     cached = cached_keywords(query)
-    plan = {}
-    if cached and cached.get("keywords"):
-        keywords = list(cached["keywords"])
-        fields = [f for f in (cached.get("fields") or []) if f in set(fields_available)]
-        plan = {"goal": cached.get("goal", "")}
+    if cached and cached.get("plan") and (cached["plan"].get("core") or cached["plan"].get("related")):
+        plan = dict(cached["plan"])
         from_cache = True
     else:
-        plan = gemini_json(
+        raw = gemini_json(
             KEYWORD_SYSTEM,
             KEYWORD_PROMPT.format(query=query, fields=", ".join(fields_available[:40])),
             model=model, timeout=90, usage=usage, temperature=0.0,
         )
-        keywords = [str(k).strip() for k in (plan.get("keywords") or []) if str(k).strip()][:22]
-        keywords = [k for k in keywords if k not in STOPWORDS]
-        if not keywords:
-            keywords = tokenize(query)
-        fields = [f for f in (plan.get("fields") or []) if f in set(fields_available)]
-        store_keywords(query, keywords, fields, str(plan.get("goal") or ""))
+        clean = lambda arr, n: [str(k).strip() for k in (arr or []) if str(k).strip() and str(k).strip() not in STOPWORDS][:n]
+        plan = {
+            "goal": str(raw.get("goal") or ""),
+            "core": clean(raw.get("core"), 8),
+            "related": clean(raw.get("related"), 18),
+            "region": str(raw.get("region") or "").strip(),
+            "modality": [str(m).strip() for m in (raw.get("modality") or []) if str(m).strip()],
+            "wants_ai_training": truthy(raw.get("wants_ai_training", "")),
+            "fields": [f for f in (raw.get("fields") or []) if f in set(fields_available)],
+        }
+        if not plan["core"] and not plan["related"]:
+            plan["related"] = tokenize(query)
+        store_keywords(query, plan["core"] + plan["related"], plan["fields"], plan["goal"], plan)
         from_cache = False
+    keywords = plan["core"] + plan["related"]
+    fields = list(plan.get("fields") or [])
+
+    # AI 학습 목적(또는 이미지·음성·영상 요구)이면 AI Hub 975건을 의미로 한 번 더 훑는다.
+    non_tabular = bool(set(plan.get("modality") or []) - {"정형"})
+    if (plan.get("wants_ai_training") or non_tabular) and "aihub_picks" not in plan:
+        plan["aihub_picks"], plan["aihub_pick_reasons"] = aihub_semantic_pick(query, plan, model=model, usage=usage)
+        store_keywords(query, keywords, fields, plan.get("goal", ""), plan)
 
     # 2단계 - 로컬 카탈로그 검색 (질문 원문 토큰도 함께 넣어 놓치는 데이터를 줄인다)
-    candidates = search_candidates(keywords, fields, limit=60, query=query)
+    candidates = search_candidates(keywords, fields, limit=60, query=query, plan=plan)
     if not candidates:
         candidates = search_candidates(tokenize(query), [], limit=60, query=query)
     if not candidates:
@@ -891,11 +1114,21 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
 
     # 3단계 - 추천 생성. 안심존 후보가 섞여 있을 때만 안심존 이용 규칙을 함께 준다.
     has_safezone = any(access_of(row, aihub_access)["type"] == "안심존" for row in candidates)
+    summary_lines = []
+    if plan.get("region"):
+        summary_lines.append("- 지역: %s (이 지역 데이터를 우선)" % plan["region"])
+    if plan.get("modality"):
+        summary_lines.append("- 원하는 데이터 형태: %s" % ", ".join(plan["modality"]))
+    summary_lines.append("- 목적: %s" % ("AI 모델 학습·개발" if plan.get("wants_ai_training") else "현황·통계 분석/서비스 기획"))
+    if plan.get("core"):
+        summary_lines.append("- 핵심 개념: %s" % ", ".join(plan["core"]))
+    summary = "\n[요구 요약]\n" + "\n".join(summary_lines) + "\n"
     result = gemini_json(
         RECO_SYSTEM,
         RECO_PROMPT.format(
             query=query,
-            candidates=_candidate_block(candidates, aihub_access),
+            summary=summary,
+            candidates=_candidate_block(candidates, aihub_access, plan.get("aihub_pick_reasons")),
             safezone_guide=("\n" + SAFEZONE_GUIDE) if has_safezone else "",
             safezone_schema=SAFEZONE_SCHEMA if has_safezone else "",
             safezone_rules=SAFEZONE_RULES if has_safezone else "",
@@ -937,6 +1170,7 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
         "goal": str(result.get("goal") or plan.get("goal") or ""),
         "keywords": keywords,
         "fields": fields,
+        "plan": {k: plan.get(k) for k in ("core", "region", "modality", "wants_ai_training", "aihub_picks")},
         "features": [{"name": str(f.get("name") or ""),
                       "detail": humanize(str(f.get("detail") or ""), by_uid),
                       "data_need": humanize(str(f.get("data_need") or ""), by_uid)}

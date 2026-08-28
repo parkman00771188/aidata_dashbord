@@ -205,22 +205,65 @@
     '대한', '있는', '하는', '해서', '추천', '전체', '모든', '여러', '다양한', '기반', '구축', '사용', '이용', '분석',
     '합니다', '입니다', '하려고', '만들고', '싶습니다', '있습니다', '찾고', '통해', '결합', '어떤', '경우', '방법']);
 
-  /** ai_service.search_candidates 의 브라우저 판(같은 가중치·IDF·키워드별 확보). */
-  async function searchCandidates(keywords, limit) {
+  // 지역 접두어 - 같은 데이터의 지역별 복제본을 묶고, 지역 지정 질문에서 다른 지역을 뒤로 보낸다.
+  const REGION_WORDS = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원',
+    '충북', '충남', '충청', '전북', '전남', '전라', '경북', '경남', '경상', '제주'];
+  const REGION_ALIASES = {
+    '서울': ['서울'], '부산': ['부산'], '대구': ['대구'], '인천': ['인천'], '광주': ['광주'], '대전': ['대전'],
+    '울산': ['울산'], '세종': ['세종'], '경기': ['경기'], '강원': ['강원'], '충북': ['충북', '충청북도'],
+    '충남': ['충남', '충청남도'], '전북': ['전북', '전라북도'], '전남': ['전남', '전라남도'],
+    '경북': ['경북', '경상북도'], '경남': ['경남', '경상남도'], '제주': ['제주'],
+  };
+  const MEDIA_WORDS = { '이미지': ['이미지', '영상', 'jpg', 'png', 'image'], '영상': ['영상', '비디오', 'video', 'mp4'],
+    '음성': ['음성', '오디오', 'wav', 'audio'], '텍스트': ['텍스트', '말뭉치', 'text', 'json'] };
+  function regionTerms(region) {
+    region = String(region || '').trim();
+    if (!region) return [];
+    for (const [key, aliases] of Object.entries(REGION_ALIASES)) {
+      if (region.startsWith(key) || aliases.some(a => region.startsWith(a))) return aliases;
+    }
+    return region.length >= 2 ? [region.slice(0, 2)] : [];
+  }
+  function titleGroupKey(title) {
+    let t = String(title || '').replace(/^[^_]{2,40}_/, '');
+    REGION_WORDS.forEach(w => { t = t.split(w).join(''); });
+    return t.replace(/[\s\d()\[\]·\-_,./]+/g, '').toLowerCase().slice(0, 40);
+  }
+  function hasOtherRegion(title, wanted) {
+    const head = String(title || '').slice(0, 14);
+    if (wanted.some(w => head.includes(w))) return false;
+    return REGION_WORDS.some(w => head.includes(w));
+  }
+  const truthy = v => ['true', '1', 'yes', '예', 'y'].includes(String(v).trim().toLowerCase());
+
+  /** ai_service.search_candidates 의 브라우저 판.
+   *  plan: { core, related, region, modality, wants_ai_training } (키워드 단계 결과) */
+  async function searchCandidates(plan, limit) {
     await loadIndex();
     limit = limit || 60;
-    const kws = [];
-    (keywords || []).forEach(k => {
+    plan = plan || {};
+    const core = (plan.core || []).map(k => String(k).trim()).filter(Boolean);
+    let related = (plan.related || []).map(k => String(k).trim()).filter(Boolean);
+    if (!core.length && !related.length) related = (plan.keywords || []).map(String);
+    const kws = [], isCore = [];
+    const add = (k, c) => {
       k = String(k || '').trim();
       if (k.length < 2 || STOPWORDS.has(k) || kws.indexOf(k) >= 0) return;
-      kws.push(k);
+      kws.push(k); isCore.push(c);
       const ns = k.replace(/\s+/g, '');
-      if (ns !== k && ns.length >= 2 && kws.indexOf(ns) < 0) kws.push(ns);
-    });
+      if (ns !== k && ns.length >= 2 && kws.indexOf(ns) < 0) { kws.push(ns); isCore.push(c); }
+    };
+    core.forEach(k => add(k, true));
+    related.forEach(k => add(k, false));
     if (!kws.length) return { candidates: [], stats: null };
+    const hasCore = isCore.some(Boolean);
     const low = kws.map(k => k.toLowerCase());
+    const wantedRegion = regionTerms(plan.region);
+    const wantsAi = truthy(plan.wants_ai_training);
+    const modality = new Set((plan.modality || []).map(String));
 
     const hits = low.map(() => new Map());
+    const regionSet = new Set();
     INDEX.forEach(it => {
       for (let i = 0; i < low.length; i++) {
         const kw = low[i];
@@ -230,47 +273,90 @@
         if (s === 0 && it._hay.indexOf(kw) >= 0) s += 1.5;
         if (s) hits[i].set(it.uid, s);
       }
+      if (wantedRegion.length && wantedRegion.some(w => it.t.includes(w) || it.o.includes(w))) regionSet.add(it.uid);
     });
-    const totalRows = Math.max(1, new Set([].concat.apply([], hits.map(h => [...h.keys()]))).size);
+    const matched = new Set([].concat.apply([], hits.map(h => [...h.keys()])));
+    regionSet.forEach(u => matched.add(u));
+    const totalRows = Math.max(1, matched.size);
     const idf = hits.map(h => Math.max(0.35, Math.log((totalRows + 1) / (h.size + 1)) / Math.log(20) + 0.35));
 
-    const combined = new Map();
+    const combined = new Map();   // uid -> [score, coreHits, relatedHits, coreScore, relScore]
     hits.forEach((h, i) => h.forEach((raw, uid) => {
-      const slot = combined.get(uid) || [0, 0];
-      slot[0] += raw * idf[i]; slot[1] += 1;
+      const slot = combined.get(uid) || [0, 0, 0, 0, 0];
+      const w = raw * idf[i] * (isCore[i] ? 2 : 1);
+      slot[0] += w;
+      slot[isCore[i] ? 1 : 2] += 1;
+      slot[isCore[i] ? 3 : 4] += w;
       combined.set(uid, slot);
     }));
+    regionSet.forEach(uid => { if (!combined.has(uid)) combined.set(uid, [0, 0, 0, 0, 0]); });
+    const semantic = new Set((plan.aihub_picks || []).map(x => 'aihub:' + String(x).replace('aihub:', '')));
+    semantic.forEach(uid => { if (!combined.has(uid)) combined.set(uid, [0, 1, 0, 0, 0]); matched.add(uid); });
     const byUid = new Map(INDEX.map(it => [it.uid, it]));
-    const ranked = [...combined.entries()].sort((a, b) =>
-      (b[1][0] + b[1][1] * 3) - (a[1][0] + a[1][1] * 3));
+    const baseRank = s => s[0] + s[1] * 6 + s[2] * 1.5;
+    const ranked = [...combined.entries()].sort((a, b) => baseRank(b[1]) - baseRank(a[1]));
 
     const chosen = [], seen = new Set();
-    ranked.slice(0, 220).forEach(([uid]) => { seen.add(uid); chosen.push(uid); });
+    semantic.forEach(uid => { if (byUid.has(uid)) { seen.add(uid); chosen.push(uid); } });  // 의미 선별은 반드시 포함
+    ranked.slice(0, 440).forEach(([uid]) => { if (!seen.has(uid)) { seen.add(uid); chosen.push(uid); } });
     hits.forEach(h => [...h.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30)
       .forEach(([uid]) => { if (!seen.has(uid)) { seen.add(uid); chosen.push(uid); } }));
 
-    const scored = [];
+    const scored = [], fallback = [];
     chosen.forEach(uid => {
       const it = byUid.get(uid); if (!it) return;
-      const [base, covered] = combined.get(uid) || [0, 0];
-      if (!covered) return;
-      let score = base + covered * 4;
+      const [, coreHits, relHits, coreScore, relScore] = combined.get(uid) || [0, 0, 0, 0, 0];
+      const isSemantic = semantic.has(uid);
+      let relaxed = false;
+      if (!isSemantic) {
+        if (!hasCore && relHits === 0) return;
+        if (hasCore && coreHits === 0) { if (relHits < 2) return; relaxed = true; }   // 예비 후보
+      }
+      // 확장어는 상한(30)까지만 - 핵심 개념 일치가 순위를 정한다
+      let score = coreScore + Math.min(relScore, 30) + coreHits * 6 + Math.min(relHits, 4) * 1.5;
+      if (wantedRegion.length) {
+        if (wantedRegion.some(w => it.t.includes(w) || it.o.includes(w))) score += 15;
+        else if (hasOtherRegion(it.t, wantedRegion)) score -= 6;
+      }
       score += Math.min(4, Math.pow(it.dl || 0, 0.35) / 6);
       if (it.cn) score += 2;
-      if (it.s) score += 1.5;
-      scored.push([score, it, covered]);
+      const fmtText = ((it.fm || []).join(' ') + ' ' + it.t).toLowerCase();
+      let mediaMatch = false;
+      for (const m of modality) if ((MEDIA_WORDS[m] || []).some(w => fmtText.includes(w))) { mediaMatch = true; break; }
+      const visual = ['이미지', '영상', '음성'].some(m => modality.has(m));
+      if (it.s) {
+        if (wantsAi) score = score * (mediaMatch ? 1.5 : 1.2) + 8; else score += 1.5;
+      } else if (wantsAi && visual && !mediaMatch) {
+        score *= 0.6;
+      }
+      if (isSemantic) score += 40;
+      if (relaxed) fallback.push([score * 0.5, it, coreHits + relHits]);
+      else scored.push([score, it, coreHits + relHits]);
     });
     scored.sort((a, b) => b[0] - a[0]);
-    const quotaAi = Math.max(8, Math.floor(limit / 3));
+    // 핵심 개념이 드문 낱말이라 후보가 너무 적으면 예비 후보로 채운다
+    if (scored.length < 20 && fallback.length) {
+      fallback.sort((a, b) => b[0] - a[0]);
+      scored.push(...fallback.slice(0, Math.max(0, 40 - scored.length)));
+    }
+
+    // 다양성: 같은 데이터의 지역별 복제본은 묶음당 3건까지(질문 지역과 맞는 건 예외)
+    const groupCount = new Map();
+    const quotaAi = Math.max(8, Math.floor(limit / 3)) * (wantsAi ? 2 : 1);
     const picked = []; let aiN = 0;
     for (const [score, it, covered] of scored) {
       if (picked.length >= limit) break;
+      const key = titleGroupKey(it.t);
+      const isWanted = wantedRegion.length && wantedRegion.some(w => it.t.includes(w));
+      if (!isWanted && (groupCount.get(key) || 0) >= 3) continue;
       if (it.s) { if (aiN >= quotaAi && picked.length > limit * 0.6) continue; aiN++; }
+      groupCount.set(key, (groupCount.get(key) || 0) + 1);
       picked.push({ ...toRow(it), _score: Math.round(score * 10) / 10, _covered: covered, columns_text: it.mt });
     }
     return {
       candidates: picked,
-      stats: { matched: totalRows, scanned_pool: chosen.length, keywords: kws, engine: 'browser',
+      stats: { matched: totalRows, scanned_pool: chosen.length, keywords: kws, core, region: wantedRegion,
+               modality: [...modality], wants_ai: wantsAi, engine: 'browser',
                keyword_hits: Object.fromEntries(kws.map((k, i) => [k, hits[i].size])), capped: false },
     };
   }
@@ -312,11 +398,23 @@
       // 1) 브라우저에서 후보를 찾고 2) 서버(Functions)가 Gemini 를 호출한다.
       emit({ phase: 'search' });
       const plan = await callFunction('/api/ai/keywords', { query });
-      const found = await searchCandidates(plan.keywords || [], 60);
+      const nonTabular = (plan.modality || []).some(m => m !== '정형');
+      if ((truthy(plan.wants_ai_training) || nonTabular) && !plan.aihub_picks) {
+        try {
+          const titles = await getJSON('aihub-titles.json');
+          const picked = await callFunction('/api/ai/aihub-pick', { query, core: plan.core, modality: plan.modality, titles });
+          plan.aihub_picks = picked.picks || [];
+          plan.aihub_pick_reasons = picked.reasons || {};
+          plan.pick_usage = picked.cached ? null : (picked.usage || null);
+        } catch (e) { plan.aihub_picks = []; plan.aihub_pick_reasons = {}; }
+      }
+      const found = await searchCandidates(plan, 60);
       if (!found.candidates.length) throw new Error('카탈로그에서 관련 데이터를 찾지 못했습니다. 다른 표현으로 검색해 보세요.');
       emit({ phase: 'ai' });
       const result = await callFunction('/api/ai/recommend', {
         query, keywords: plan.keywords, goal: plan.goal,
+        plan: { core: plan.core, region: plan.region, modality: plan.modality, wants_ai_training: plan.wants_ai_training,
+                aihub_picks: plan.aihub_picks || [], aihub_pick_reasons: plan.aihub_pick_reasons || {} },
         candidates: found.candidates.map(c => ({
           uid: c.uid, source: c.source, source_id: c.source_id, title: c.title, field: c.field,
           subfield: c.subfield, organization: c.organization, formats: c.formats,
@@ -326,6 +424,18 @@
         })),
       });
       result.search = Object.assign({}, found.stats, { cached: !!plan.cached });
+      // 키워드 분석·의미 선별 호출의 토큰도 합산해 실제 사용량을 보여 준다
+      const extra = [plan.cached ? null : plan.usage, plan.pick_usage].filter(Boolean);
+      if (result.usage && extra.length) {
+        extra.forEach(u => { ['prompt', 'output', 'thoughts', 'total'].forEach(k => { result.usage[k] = (result.usage[k] || 0) + (u[k] || 0); }); });
+        result.usage.calls = (result.usage.calls || 0) + extra.length - (plan.cached ? 0 : 1);
+        if (result.usage.cost) {
+          const rin = result.usage.cost.rate_in || 0.3, rout = result.usage.cost.rate_out || 2.5;
+          const usd = (result.usage.prompt / 1e6) * rin + ((result.usage.output + result.usage.thoughts) / 1e6) * rout;
+          result.usage.cost.usd = Math.round(usd * 1e6) / 1e6;
+          result.usage.cost.krw = Math.round(usd * 1400 * 10) / 10;
+        }
+      }
       const store = readLS(LS_RECO, { items: [] });
       store.items = [result].concat((store.items || []).filter(x => x.id !== result.id)).slice(0, 200);
       store.updated_at = new Date().toISOString().slice(0, 19).replace('T', ' ');

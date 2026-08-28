@@ -39,8 +39,10 @@ const SYSTEM = '너는 데이터 기반 서비스 기획자다. 사용자의 목
   + '반드시 후보 목록에 있는 uid만 사용하고, 목록에 없는 데이터를 지어내지 않는다. '
   + '모든 설명은 한국어로 쓰고 JSON만 출력한다.';
 
-function candidateBlock(candidates) {
+function candidateBlock(candidates, reasons) {
+  reasons = reasons || {};
   return candidates.map(c => {
+    const reason = c.source === 'AI Hub' ? (reasons[String(c.source_id || '')] || '') : '';
     const cols = String(c.columns_text || '').split(/\s+/).filter(Boolean);
     const colText = cols.length
       ? cols.slice(0, 18).join(', ').slice(0, 320) + (cols.length > 18 ? ' …' : '') + ` (총 ${cols.length}개)`
@@ -50,7 +52,8 @@ function candidateBlock(candidates) {
       + `형식: ${(c.formats || []).join(', ') || '-'} | 제공방식: ${(c.access && c.access.type) || '-'} | `
       + `행수: ${c.row_count || '-'} | 갱신: ${c.modified_at || '-'}\n`
       + `  데이터항목: ${colText}\n`
-      + `  설명: ${String(c.description || '-').replace(/\s+/g, ' ').slice(0, 200)}`;
+      + `  설명: ${String(c.description || '-').replace(/\s+/g, ' ').slice(0, 200)}`
+      + (reason ? `\n  ★ AI Hub 전문가 검토: 목적에 적합 - ${reason}` : '');
   }).join('\n');
 }
 
@@ -84,12 +87,20 @@ export async function onRequestPost({ request, env }) {
   }
   const model = settings.model || DEFAULT_MODEL;
   const hasSafezone = candidates.some(c => c.access && c.access.type === '안심존');
+  const plan = body.plan || {};
+  const wantsAi = ['true', '1', 'yes', '예', 'y'].includes(String(plan.wants_ai_training).toLowerCase());
+  const summaryLines = [];
+  if (plan.region) summaryLines.push(`- 지역: ${plan.region} (이 지역 데이터를 우선)`);
+  if (Array.isArray(plan.modality) && plan.modality.length) summaryLines.push(`- 원하는 데이터 형태: ${plan.modality.join(', ')}`);
+  summaryLines.push(`- 목적: ${wantsAi ? 'AI 모델 학습·개발' : '현황·통계 분석/서비스 기획'}`);
+  if (Array.isArray(plan.core) && plan.core.length) summaryLines.push(`- 핵심 개념: ${plan.core.join(', ')}`);
+  const summary = `\n[요구 요약]\n${summaryLines.join('\n')}\n`;
 
   const prompt = `[사용자 목적]
 """${query}"""
-
+${summary}
 [후보 데이터 목록]
-${candidateBlock(candidates)}
+${candidateBlock(candidates, plan.aihub_pick_reasons)}
 ${hasSafezone ? '\n' + SAFEZONE_GUIDE + '\n' : ''}
 위 후보만 사용해 아래 JSON 형식으로 답하라.
 {
@@ -117,12 +128,16 @@ ${hasSafezone ? '\n' + SAFEZONE_GUIDE + '\n' : ''}
 }
 
 규칙:
-- datasets 는 중요도 순으로 최대 15개. '핵심'은 3~5개로 제한하되, 조금이라도 쓸모 있는 후보는 '보조'나 '참고'로라도 넣는다.
-- items 는 반드시 해당 후보의 '데이터항목'에 실제로 있는 이름만 쓴다. 항목 정보가 없으면 items 를 비우고 why 에 "항목 미확인"이라고 적는다.
-- 데이터항목을 보고 목적에 쓸 값이 없다고 판단되면 그 후보는 고르지 않는다.
+- datasets 는 중요도 순으로 최대 15개. '핵심'은 3~5개로 제한한다. 목적에 직접 관련된 후보는 놓치지 말되, 무관한 데이터로 개수를 채우지 않는다. 맞는 데이터가 3~4개뿐이면 그만큼만 추천한다.
+- 같은 성격의 데이터가 여러 건이면(예: 격자 크기만 다른 유동인구 데이터) 가장 알맞은 1~2개를 고른다.
+- items 는 반드시 해당 후보의 '데이터항목'에 실제로 있는 이름만 쓴다. 항목 정보가 없는 후보는 데이터명·설명·행수로 판단하고 items 는 비우고 why 에 "항목 미확인"이라고 적는다. 항목 정보가 없다는 이유만으로 제외하지 않는다.
+- 데이터항목이 있는데 목적에 쓸 값이 전혀 없다고 판단되면 그 후보는 고르지 않는다.
+- '★ AI Hub 전문가 검토' 표시가 붙은 후보는 데이터명이 목적과 달라 보여도 내용이 맞는 것으로 확인된 것이다. 특별한 이유가 없으면 '핵심' 또는 '보조'로 포함하고, 그 근거를 why 에 반영한다.
 - pipeline 의 detail 은 "A 데이터의 X 항목과 B 데이터의 Y 항목을 Z 기준으로 결합한다" 처럼 실제 데이터명과 항목명을 넣어 쓴다.
 - 설명 문장에서는 uid 대신 사람이 읽는 데이터명을 쓴다.
-- features 는 3~6개, pipeline 은 4~6단계로 만든다.${hasSafezone ? SAFEZONE_RULES : ''}`;
+- features 는 3~6개, pipeline 은 4~6단계로 만든다.
+- 특정 지역이 지정된 요구라면 그 지역 데이터를 우선 고르고, 다른 지역의 같은 종류 데이터는 방법론 참고용으로 1~2개만 '참고'에 넣는다.
+- AI 학습 목적이고 원하는 형태가 이미지·음성·영상이면 그 형태의 학습 데이터(주로 AI Hub)를 핵심에 두고, 통계·현황 데이터는 라벨·보조 정보로 배치한다.${hasSafezone ? SAFEZONE_RULES : ''}`;
 
   let result, usage;
   try {

@@ -299,6 +299,9 @@ def build(out_dir):
     }
     write_json(os.path.join(data_out, "meta.json"), meta)
     write_json(os.path.join(data_out, "shard-map.json"), shard_of)
+    # AI Hub 의미 기반 선별용 제목 목록(975건, 약 60KB)
+    write_json(os.path.join(data_out, "aihub-titles.json"),
+               [[it["sid"], it["t"], it["f"], it["fm"]] for it in items if it["s"] == 1])
 
     total_mb = sum(os.path.getsize(os.path.join(data_out, f)) for f in os.listdir(data_out)) / 1048576
     log("완료: %.0fMB, 파일 %d개, %.0f초"
