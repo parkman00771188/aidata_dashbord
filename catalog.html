@@ -191,6 +191,26 @@
   .outcome { margin-top:16px; padding:14px 16px; border-radius:12px; background:linear-gradient(135deg,var(--violet2),var(--blue2)); }
   .outcome b { display:block; font-size:12px; color:var(--violet); margin-bottom:5px; }
   .outcome div { line-height:1.75; color:#33405a; }
+  /* 안심존 계획 */
+  .rc.sz { border-color:var(--lock-line); background:linear-gradient(180deg,var(--lock-bg),var(--card) 26%); }
+  .rc.sz h3 .n { background:var(--lock-bg); color:var(--lock); }
+  .sz-note { font-size:13px; color:#7a5405; background:var(--lock-bg); border:1px solid var(--lock-line); border-radius:10px; padding:10px 13px; line-height:1.7; }
+  .sz-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:11px; }
+  .usechip.lock { background:var(--lock-bg); border-color:var(--lock-line); color:var(--lock); }
+  .usechip.lock:hover { border-color:var(--lock); }
+  .sz-combine { margin-top:13px; padding:11px 13px; border-radius:10px; background:#fff; border:1px solid var(--line); }
+  .sz-combine b { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .sz-combine div { line-height:1.7; }
+  .sz-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; margin-top:13px; }
+  .sz-grid > div { background:#fff; border:1px solid var(--line); border-radius:11px; padding:12px 14px; }
+  .sz-grid h4 { margin:0 0 7px; font-size:13px; }
+  .sz-list { margin:0; padding-left:19px; line-height:1.75; color:#41506a; font-size:13px; }
+  .sz-list li { margin-bottom:3px; }
+  .sz-export,.sz-sched,.sz-caution { margin-top:13px; }
+  .sz-export b,.sz-sched b,.sz-caution b { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
+  .sz-sched table { width:100%; border-collapse:collapse; font-size:13px; background:#fff; }
+  .sz-sched th { width:110px; text-align:left; background:#fafbfc; border:1px solid var(--line); padding:6px 10px; color:#41506a; white-space:nowrap; }
+  .sz-sched td { border:1px solid var(--line); padding:6px 10px; }
   .bullets { margin:0; padding-left:20px; color:#41506a; line-height:1.8; }
   .usage-line { margin:14px 4px 0; font-size:11.5px; line-height:1.7; color:var(--muted); opacity:.55; }
   .usage-line:hover { opacity:.9; }
@@ -526,10 +546,26 @@
           ${p.output?`<div class="outp"><b>결과</b> ${esc(p.output)}</div>`:''}
         </div></div>`).join('')}</div>
         ${r.outcome?`<div class="outcome"><b>이렇게 하면 무엇을 할 수 있나</b><div>${esc(r.outcome)}</div></div>`:''}</div>`:''}
+      ${safezoneCard(r)}
       ${(r.cautions||[]).length?`<div class="rc"><h3>유의사항</h3><ul class="bullets">${r.cautions.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`:''}
       ${(r.missing||[]).length?`<div class="rc"><h3>추가로 확보하면 좋은 데이터</h3><ul class="bullets">${r.missing.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`:''}
       ${usageLine(r)}`;
     renderRecoList()}
+  function safezoneCard(r){const s=r.safezone;if(!s||!(s.datasets||[]).length)return '';
+    const list=(arr,cls)=>arr&&arr.length?`<ol class="sz-list ${cls||''}">${arr.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`:'';
+    return `<div class="rc sz">
+      <h3>🔒 안심존 이용 계획 <span class="n">${s.datasets.length}건은 다운로드 불가</span></h3>
+      <div class="sz-note">아래 데이터는 내려받을 수 없습니다. <b>안심존 서버에 들어가 학습하고 소스코드와 모델 파일만 반출</b>하는 방식으로 써야 합니다.</div>
+      <div class="sz-chips">${s.datasets.map(d=>`<button class="usechip lock" data-open="${esc(d.uid)}">🔒 ${esc(d.title)}</button>`).join('')}</div>
+      ${s.combine?`<div class="sz-combine"><b>다운로드 데이터와 역할 나누기</b><div>${esc(s.combine)}</div></div>`:''}
+      <div class="sz-grid">
+        <div><h4>① 들어가기 전 (외부에서 준비)</h4>${list(s.outside)}</div>
+        <div><h4>② 안심존 안에서 (순서 중요)</h4>${list(s.inside)}</div>
+      </div>
+      ${(s.export||[]).length?`<div class="sz-export"><b>반출할 결과물</b><div class="chipline">${s.export.map(x=>`<span class="badge download">${esc(x)}</span>`).join('')}</div></div>`:''}
+      ${(s.schedule||[]).length?`<div class="sz-sched"><b>30일 일정 제안</b><table>${s.schedule.map(x=>`<tr><th>${esc(x.period)}</th><td>${esc(x.task)}</td></tr>`).join('')}</table></div>`:''}
+      ${(s.cautions||[]).length?`<div class="sz-caution"><b>안심존 특유 주의점</b><ul class="bullets">${s.cautions.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}
+    </div>`}
   function usageLine(r){const u=r.usage;if(!u||!u.total)return '';const c=u.cost||{};
     const won=c.krw!=null?(c.krw<1?'₩1 미만':'약 ₩'+fmt(Math.round(c.krw))):'';
     const usd=c.usd!=null?'$'+(c.usd<0.01?c.usd.toFixed(5):c.usd.toFixed(4)):'';

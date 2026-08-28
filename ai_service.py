@@ -458,6 +458,37 @@ KEYWORD_PROMPT = """사용자 요구:
   "fields": ["다음 분야명 중 관련된 것만: {fields}"]
 }}"""
 
+# 안심존(AI Hub 보건의료 등) 이용 규칙 요약 - docs/안심존 사용 방법.md 기반.
+# 안심존 데이터가 후보에 있을 때만 프롬프트에 붙인다.
+SAFEZONE_GUIDE = """[안심존 데이터 이용 규칙 - 추천에 반드시 반영]
+- 안심존은 데이터를 받아오는 곳이 아니라, 데이터가 있는 서버에 내 개발환경을 가져가
+  학습시키고 결과물만 들고 나오는 곳이다.
+- 밖으로 반출 가능: 소스코드, 학습된 AI 모델 파일(model.pkl/pt/h5)뿐.
+  반출 불가: 원본·가공 데이터, CSV/NPY/PKL 데이터, 이미지·영상·음성·압축파일.
+  성능 결과도 간단한 그래프 수준만 심사를 거쳐 나올 수 있다.
+- 신청: 열람이 아니라 '데이터 사용' 신청이며 IRB 승인과 연구계획서가 필요하다.
+  여러 데이터를 조합할 계획이면 처음부터 '멀티데이터'로 함께 신청해야 한다.
+- 서버: IRB 승인 연구 1건당 GPU 서버 1대, 사용기간 30일(주말·공휴일 포함).
+  V100 32GB, 8 vCPU, RAM 90GB, Ubuntu 22.04, CUDA 12.2, Python 3.11 수준.
+- 인터넷은 초기 최대 5일만 열린다. 그 사이에 패키지 설치·코드 업로드·자체 데이터 업로드를
+  끝내야 하고, 데이터를 마운트하면 인터넷이 차단된다. 순서를 어기면 서버 초기화(약 1일)가 필요하다.
+- 그래서 학습 코드는 밖에서 동일 스키마의 샘플·공개 데이터로 미리 완성해 두고 들어가야 한다.
+- 원본 데이터 폴더는 읽기 전용이라 작업 폴더(nasw)로 복사해 쓴다. SHAP 등 설명가능성 분석도 내부에서 수행한다.
+- 모델 파일에 학습 데이터가 들어가면 반출이 막힌다. 모델·feature_names·threshold·버전만 저장한다.
+- 반출은 nasw/download 에 넣고 종료일 기준 최소 영업일 3일 전에 신청한다(심사 2~3영업일, 최대 3회).
+"""
+
+SAFEZONE_SCHEMA = """,
+  "safezone_plan": {{
+    "datasets": ["안심존으로만 쓸 수 있는 추천 데이터의 uid"],
+    "outside": ["안심존에 들어가기 전에 밖에서 준비할 일 3~5개. 어떤 공개 데이터로 코드를 미리 검증할지 포함"],
+    "inside": ["안심존 안에서 순서대로 할 일 4~6개. 인터넷이 열려 있는 초기 5일에 할 일과 마운트 이후 할 일을 구분"],
+    "combine": "다운로드 가능한 데이터와 안심존 데이터의 역할을 어떻게 나눌지 2~3문장",
+    "export": ["30일 뒤 반출할 결과물. 반출 가능한 것만 적는다"],
+    "schedule": [{{"period": "Day 1~5", "task": "그 기간에 할 일"}}],
+    "cautions": ["안심존 때문에 특별히 조심할 점 2~4개"]
+  }}"""
+
 RECO_SYSTEM = (
     "너는 데이터 기반 서비스 기획자다. 사용자의 목적과 '후보 데이터 목록'을 보고, "
     "목적 달성에 필요한 기능을 정의하고 후보 중에서 실제로 쓸 데이터를 골라 활용 방법을 제시한다. "
@@ -471,7 +502,7 @@ RECO_PROMPT = """[사용자 목적]
 
 [후보 데이터 목록]
 {candidates}
-
+{safezone_guide}
 위 후보만 사용해 아래 JSON 형식으로 답하라.
 {{
   "title": "이 추천을 나타내는 12자 이내 제목",
@@ -494,7 +525,7 @@ RECO_PROMPT = """[사용자 목적]
   ],
   "outcome": "위 흐름을 끝냈을 때 실제로 무엇을 할 수 있게 되는지 2~3문장. 어떤 질문에 답할 수 있고 무엇을 만들 수 있는지 구체적으로",
   "cautions": ["데이터 활용 시 유의사항 2~4개"],
-  "missing": ["후보에 없어서 추가로 확보해야 할 데이터 1~3개"]
+  "missing": ["후보에 없어서 추가로 확보해야 할 데이터 1~3개"]{safezone_schema}
 }}
 
 규칙:
@@ -508,7 +539,15 @@ RECO_PROMPT = """[사용자 목적]
 - 설명 문장에서는 uid 대신 사람이 읽는 데이터명을 쓴다. uid 는 uses 와 datasets 에만 넣는다.
 - pipeline 의 uses 에는 datasets 에 넣은 uid 만 쓴다.
 - features 는 3~6개, pipeline 은 4~6단계로 만든다.
-- 후보에 마땅한 데이터가 없으면 datasets 를 비우고 missing 에 이유를 적는다."""
+- 후보에 마땅한 데이터가 없으면 datasets 를 비우고 missing 에 이유를 적는다.{safezone_rules}"""
+
+SAFEZONE_RULES = """
+- 제공방식이 '안심존'인 데이터를 추천했다면 safezone_plan 을 반드시 채운다.
+  하나도 추천하지 않았다면 safezone_plan 은 넣지 않는다.
+- 안심존 데이터가 섞였다면 pipeline 에도 그 사실을 반영한다. 즉 안심존 데이터를 쓰는 단계는
+  '안심존 서버 안에서' 수행하고, 그 결과로 데이터가 아니라 모델·코드만 나온다는 점을 적는다.
+- 다운로드 가능한 데이터는 밖에서 미리 코드·전처리를 검증하는 용도로 배치해,
+  안심존 30일을 낭비하지 않도록 설계한다."""
 
 
 UID_RE = re.compile(r"(?:aihub|public):[0-9]+")
@@ -521,7 +560,18 @@ def humanize(text: str, by_uid: dict) -> str:
     def swap(m):
         title = (by_uid.get(m.group(0)) or {}).get("title")
         return "'%s'" % title if title else m.group(0)
-    return UID_RE.sub(swap, text)
+    out = UID_RE.sub(swap, text)
+    # 모델이 "이름(uid)" 로 쓴 경우 치환 후 이름이 두 번 나오므로 하나로 줄인다.
+    for row in by_uid.values():
+        title = (row or {}).get("title")
+        if not title or title not in out:
+            continue
+        quoted = "'%s'" % title
+        for dup in ("%s(%s)" % (title, quoted), "%s (%s)" % (title, quoted),
+                    "%s(%s)" % (quoted, quoted), "%s (%s)" % (quoted, quoted)):
+            out = out.replace(dup, quoted)
+        out = out.replace("'%s'" % quoted, quoted)  # 따옴표가 겹친 경우
+    return out
 
 
 def columns_of(row) -> list:
@@ -552,6 +602,26 @@ def _candidate_block(rows, aihub_access) -> str:
                 mod=row.get("modified_at") or "-", cols=col_text, kws=kws or "-", desc=desc or "-")
         )
     return "\n".join(lines)
+
+
+def _safezone_plan(result: dict, by_uid: dict, datasets: list):
+    """안심존 계획을 정리한다. 실제로 안심존 데이터를 추천했을 때만 남긴다."""
+    locked = [d for d in datasets if (d.get("access") or {}).get("type") == "안심존"]
+    if not locked:
+        return None
+    plan = result.get("safezone_plan") or {}
+    text = lambda v: humanize(str(v or ""), by_uid)
+    items = lambda key, n: [text(x) for x in (plan.get(key) or [])][:n]
+    return {
+        "datasets": [{"uid": d["uid"], "title": d["title"], "source": d["source"]} for d in locked],
+        "outside": items("outside", 6),
+        "inside": items("inside", 7),
+        "combine": text(plan.get("combine")),
+        "export": items("export", 5),
+        "schedule": [{"period": str(s.get("period") or ""), "task": text(s.get("task"))}
+                     for s in (plan.get("schedule") or [])][:8],
+        "cautions": items("cautions", 5),
+    }
 
 
 def recommend(query: str, model: str = "", aihub_access: dict | None = None, fields_available=None) -> dict:
@@ -587,10 +657,17 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
     if not candidates:
         raise AiError("카탈로그에서 관련 데이터를 찾지 못했습니다. 다른 표현으로 다시 검색해 보세요. (검색어: %s)" % ", ".join(keywords))
 
-    # 3단계 - 추천 생성
+    # 3단계 - 추천 생성. 안심존 후보가 섞여 있을 때만 안심존 이용 규칙을 함께 준다.
+    has_safezone = any(access_of(row, aihub_access)["type"] == "안심존" for row in candidates)
     result = gemini_json(
         RECO_SYSTEM,
-        RECO_PROMPT.format(query=query, candidates=_candidate_block(candidates, aihub_access)),
+        RECO_PROMPT.format(
+            query=query,
+            candidates=_candidate_block(candidates, aihub_access),
+            safezone_guide=("\n" + SAFEZONE_GUIDE) if has_safezone else "",
+            safezone_schema=SAFEZONE_SCHEMA if has_safezone else "",
+            safezone_rules=SAFEZONE_RULES if has_safezone else "",
+        ),
         model=model, timeout=240, usage=usage,
     )
 
@@ -645,6 +722,7 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
         "outcome": humanize(str(result.get("outcome") or ""), by_uid),
         "cautions": [str(c) for c in (result.get("cautions") or [])][:6],
         "missing": [str(m) for m in (result.get("missing") or [])][:5],
+        "safezone": _safezone_plan(result, by_uid, datasets),
         "candidate_count": len(candidates),
         "dropped": dropped,
         "elapsed": round(time.time() - started, 1),
