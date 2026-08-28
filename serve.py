@@ -10,7 +10,8 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 import ai_service
-from catalog_db import DB_PATH, connect, decode_json, import_aihub, init_db, row_summary
+from catalog_db import (DB_PATH, build_column_index, connect, decode_json, import_aihub,
+                        init_db, row_summary)
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 MY_PATH = os.path.join(ROOT, 'data', 'my_datasets.json')
@@ -84,6 +85,9 @@ def prepare_catalog():
             init_db(con)
             if aihub_sync_needed(con):
                 import_aihub(con)
+            n = build_column_index(con)  # 비어 있을 때만 만든다
+            if n:
+                print('데이터 항목 색인 %d건 생성' % n, flush=True)
         finally:
             con.close()
     except Exception as e:  # noqa
@@ -310,6 +314,9 @@ class Handler(SimpleHTTPRequestHandler):
             result['detail'] = detail
             result['preview'] = decode_json(row['preview_json'], {})
             result['error'] = row['error']
+            cols = con.execute('SELECT columns_json,n FROM item_columns WHERE uid=?', (uid,)).fetchone()
+            result['columns'] = decode_json(cols['columns_json'], []) if cols else []
+            result['column_count'] = cols['n'] if cols else 0
             if row['source'] == 'AI Hub':
                 detail_path = os.path.join(ROOT, 'data', 'details', row['source_id'] + '.json')
                 if os.path.exists(detail_path):

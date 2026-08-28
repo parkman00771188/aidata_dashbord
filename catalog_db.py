@@ -61,6 +61,15 @@ CREATE TABLE IF NOT EXISTS crawl_meta (
     value TEXT NOT NULL
 );
 
+-- 데이터 항목(컬럼) 색인. 미리보기 헤더와 AI Hub 메타데이터 구조표에서 뽑아 둔다.
+CREATE TABLE IF NOT EXISTS item_columns (
+    uid TEXT PRIMARY KEY,
+    columns_json TEXT NOT NULL DEFAULT '[]',
+    columns_text TEXT NOT NULL DEFAULT '',
+    n INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (uid) REFERENCES catalog_items(uid) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_items_source_active ON catalog_items(source, active);
 CREATE INDEX IF NOT EXISTS idx_items_field ON catalog_items(field);
 CREATE INDEX IF NOT EXISTS idx_items_organization ON catalog_items(organization);
@@ -172,6 +181,75 @@ def import_aihub(con: sqlite3.Connection, path: str | None = None) -> int:
     set_meta(con, "aihub_crawled_at", payload.get("meta", {}).get("crawled_at", ""))
     con.commit()
     return len(items)
+
+
+ATTR_HEADERS = ("속성명", "항목명", "컬럼명", "필드명", "속성", "항목")
+
+
+def _aihub_columns(sn: str) -> list:
+    """AI Hub 상세의 메타데이터 구조표에서 속성명 열을 뽑는다."""
+    path = os.path.join(DATA_DIR, "details", "%s.json" % sn)
+    if not os.path.exists(path):
+        return []
+    try:
+        from bs4 import BeautifulSoup
+        with open(path, encoding="utf-8") as f:
+            sections = (json.load(f).get("sections") or {})
+        html = (sections.get("annotation") or "") + (sections.get("meta") or "")
+        if not html:
+            return []
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception:
+        return []
+    names = []
+    for table in soup.find_all("table"):
+        first = table.find("tr")
+        if first is None:
+            continue
+        head = [c.get_text(strip=True) for c in first.find_all(["th", "td"])]
+        idx = next((i for i, h in enumerate(head) if h in ATTR_HEADERS), None)
+        if idx is None:
+            continue
+        for tr in table.find_all("tr")[1:]:
+            cells = tr.find_all(["th", "td"])
+            if len(cells) <= idx:
+                continue
+            value = cells[idx].get_text(" ", strip=True)
+            if value and len(value) <= 40 and value not in names:
+                names.append(value)
+    return names[:120]
+
+
+def build_column_index(con: sqlite3.Connection, rebuild: bool = False) -> int:
+    """데이터 항목(컬럼) 색인을 만든다. AI 추천과 검색에서 함께 쓴다."""
+    init_db(con)
+    if not rebuild and con.execute("SELECT COUNT(*) FROM item_columns").fetchone()[0]:
+        return 0
+    con.execute("DELETE FROM item_columns")
+    rows = []
+    # 공공데이터포털: 미리보기 헤더 → 없으면 상세의 컬럼 목록
+    query = (
+        "SELECT uid,json_extract(preview_json,'$.headers') ph,"
+        "json_extract(detail_json,'$.columns.headers') dh "
+        "FROM catalog_items WHERE source='공공데이터포털' AND active=1"
+    )
+    for uid, ph, dh in con.execute(query):
+        cols = decode_json(ph, None) or decode_json(dh, None) or []
+        # CSV 첫 칸에 BOM이 남아 있는 경우가 많아 함께 정리한다.
+        cols = [str(c).replace("﻿", "").strip() for c in cols]
+        cols = [c for c in cols if c][:120]
+        if cols:
+            rows.append((uid, json.dumps(cols, ensure_ascii=False), " ".join(cols), len(cols)))
+    # AI Hub: 메타데이터 구조표의 속성명
+    for (uid, sn) in con.execute("SELECT uid,source_id FROM catalog_items WHERE source='AI Hub' AND active=1"):
+        cols = _aihub_columns(sn)
+        if cols:
+            rows.append((uid, json.dumps(cols, ensure_ascii=False), " ".join(cols), len(cols)))
+    con.executemany("INSERT OR REPLACE INTO item_columns(uid,columns_json,columns_text,n) VALUES(?,?,?,?)", rows)
+    set_meta(con, "column_index_built_at", now())
+    set_meta(con, "column_index_count", len(rows))
+    con.commit()
+    return len(rows)
 
 
 def decode_json(value, fallback):

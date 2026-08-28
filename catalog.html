@@ -168,8 +168,12 @@
   .drow .why { color:#3f4d64; margin-top:6px; line-height:1.65; }
   .drow .usage { margin-top:6px; color:#4d5b72; line-height:1.65; }
   .drow .usage b,.drow .why b { color:var(--ink); }
-  .drow .items { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
+  .drow .items { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; align-items:center; }
   .drow .items span { font-size:11px; color:#41618f; background:#eef4ff; border-radius:6px; padding:2px 7px; }
+  .drow .items .ilbl { font-size:11px; font-weight:700; color:var(--muted); margin-right:2px; }
+  .drow .items .jk { color:var(--violet); background:var(--violet2); }
+  .drow .items.cols span { color:#5b6a80; background:#f1f3f6; }
+  .drow .items.cols .more { color:var(--muted); background:transparent; }
   .drow .side { display:flex; flex-direction:column; gap:6px; align-items:stretch; min-width:118px; }
   .drow .meta { color:var(--muted); font-size:11.5px; margin-top:7px; display:flex; gap:10px; flex-wrap:wrap; }
   .steps { counter-reset:s; }
@@ -426,7 +430,9 @@
       <div class="drawer-actions"><a class="btn primary" href="${esc(d.url)}" target="_blank" rel="noopener">원문 열기 ↗</a><button class="btn" id="drawerPick">${picked(d.uid)?'★ 내 데이터에서 제거':'☆ 내 데이터에 담기'}</button></div>`;
     $('#drawerClose').onclick=closeDrawer;$('#drawerPick').onclick=()=>togglePick(d)}
   function tabsFor(d){
-    if(d.source==='AI Hub'){const s=(d.detail&&d.detail.sections)||{};const t=[['overview','개요']];Object.entries(AIHUB_SECTIONS).forEach(([k,l])=>{if(k!=='content'&&s[k]&&s[k].length>20)t.push(['sec:'+k,l])});t.push(['history','변경 이력']);return t}
+    if(d.source==='AI Hub'){const s=(d.detail&&d.detail.sections)||{};const t=[['overview','개요']];
+      if((d.columns||[]).length)t.push(['columns','데이터 항목']);
+      Object.entries(AIHUB_SECTIONS).forEach(([k,l])=>{if(k!=='content'&&s[k]&&s[k].length>20)t.push(['sec:'+k,l])});t.push(['history','변경 이력']);return t}
     const t=[['overview','개요'],['detail','파일데이터 정보'],['columns','데이터 항목']];
     t.push(['preview','미리보기']);return t}
   function renderDrawer(){renderDrawerHead();const tabs=tabsFor(detail);if(!tabs.some(t=>t[0]===detailTab))detailTab=tabs[0][0];
@@ -451,7 +457,7 @@
       }}
     else if(detailTab==='detail'){const skip=new Set(['source_id','record_type','title','description','keywords','downloads','views','url','columns','sections']);const pairs=[];for(const [k,v] of Object.entries(det)){if(skip.has(k)||typeof v==='object')continue;pairs.push([labels[k]||k,v])}
       html=`<h3>기본 및 제공정보</h3>${kv(pairs)||'<div class="notice">상세 기본정보가 아직 수집되지 않았습니다.</div>'}`}
-    else if(detailTab==='columns'){const c=det.columns?.headers?.length?det.columns:{headers:pre.headers||[],rows:[]};
+    else if(detailTab==='columns'){const c=det.columns?.headers?.length?det.columns:{headers:pre.headers||(d.columns||[]),rows:[]};
       if(!c.headers?.length)html='<div class="notice">미리보기가 수집되면 데이터 항목(컬럼)이 이곳에 표시됩니다.</div>';
       else if(c.rows?.length)html=`<h3>데이터 항목 ${fmt(c.headers.length)}개</h3><div class="preview-wrap">${dataTable(c)}</div>`;
       else html=`<h3>데이터 항목 ${fmt(c.headers.length)}개</h3><div class="chipline">${c.headers.map(x=>`<span class="badge format">${esc(x)}</span>`).join('')}</div>`}
@@ -482,7 +488,8 @@
             <div class="dt" data-open="${esc(x.uid)}">${esc(x.title)}</div>
             <div class="why"><b>왜 필요한가</b> · ${esc(x.why||'')}</div>
             ${x.usage?`<div class="usage"><b>활용 방법</b> · ${esc(x.usage)}</div>`:''}
-            ${(x.items||[]).length?`<div class="items">${x.items.map(i=>`<span>${esc(i)}</span>`).join('')}</div>`:''}
+            ${(x.items||[]).length?`<div class="items"><b class="ilbl">활용 항목</b>${x.items.map(i=>`<span>${esc(i)}</span>`).join('')}${x.join_key?`<span class="jk">연결키 ${esc(x.join_key)}</span>`:''}</div>`:''}
+            ${(x.columns||[]).length?`<div class="items cols"><b class="ilbl">전체 항목 ${fmt(x.column_count||x.columns.length)}개</b>${x.columns.slice(0,14).map(i=>`<span>${esc(i)}</span>`).join('')}${(x.column_count||0)>14?`<span class="more">+${fmt(x.column_count-14)}</span>`:''}</div>`:''}
             <div class="meta"><span>${esc(x.organization||'')}</span>${x.row_count?`<span>전체 행 ${fmt(x.row_count)}</span>`:''}${x.modified_at?`<span>수정 ${esc(x.modified_at)}</span>`:''}${x.access&&x.access.size_bytes?`<span>${esc(fmtBytes(x.access.size_bytes))}</span>`:''}${x.access&&x.access.note?`<span>${esc(x.access.note)}</span>`:''}</div>
             <div class="meta"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.url)}</a></div>
           </div>

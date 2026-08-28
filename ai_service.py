@@ -325,21 +325,24 @@ def tokenize(text: str) -> list:
 def _rows_for(con, keywords, use_description: bool, limit_rows: int):
     if not keywords:
         return []
-    cols = ["title", "file_name", "keywords_json"]
+    cols = ["i.title", "i.file_name", "i.keywords_json", "c.columns_text"]
     if use_description:
-        cols.append("description")
+        cols.append("i.description")
     clauses, args = [], []
     for kw in keywords:
         like = "%" + kw + "%"
-        clauses.append("(" + " OR ".join("%s LIKE ?" % c for c in cols) + ")")
+        clauses.append("(" + " OR ".join("%s LIKE ?" % x for x in cols) + ")")
         args.extend([like] * len(cols))
     sql = (
-        "SELECT uid,source,source_id,title,file_name,field,subfield,organization,formats_json,"
-        "keywords_json,substr(description,1,600) description,modified_at,update_cycle,row_count,"
-        "views,downloads,url,media_type,preview_status,"
-        "json_extract(detail_json,'$.delivery') delivery,json_extract(detail_json,'$.extension') extension "
-        "FROM catalog_items WHERE active=1 AND (" + " OR ".join(clauses) + ") "
-        "ORDER BY downloads DESC, views DESC LIMIT ?"
+        "SELECT i.uid,i.source,i.source_id,i.title,i.file_name,i.field,i.subfield,i.organization,"
+        "i.formats_json,i.keywords_json,substr(i.description,1,600) description,i.modified_at,"
+        "i.update_cycle,i.row_count,i.views,i.downloads,i.url,i.media_type,i.preview_status,"
+        "json_extract(i.detail_json,'$.delivery') delivery,"
+        "json_extract(i.detail_json,'$.extension') extension,"
+        "c.columns_json,c.n column_count "
+        "FROM catalog_items i LEFT JOIN item_columns c ON c.uid=i.uid "
+        "WHERE i.active=1 AND (" + " OR ".join(clauses) + ") "
+        "ORDER BY i.downloads DESC, i.views DESC LIMIT ?"
     )
     args.append(limit_rows)
     return con.execute(sql, args).fetchall()
@@ -367,6 +370,7 @@ def search_candidates(keywords, fields=None, limit: int = 40) -> list:
         title = (row["title"] or "") + " " + (row["file_name"] or "")
         kws = row["keywords_json"] or ""
         desc = row["description"] or ""
+        cols_text = row["columns_json"] or ""
         score = 0.0
         hits = 0
         for i, kw in enumerate(keywords):
@@ -378,6 +382,9 @@ def search_candidates(keywords, fields=None, limit: int = 40) -> list:
             if kw in kws:
                 score += 3 * weight
                 hit = True
+            if kw in cols_text:  # 실제 데이터 항목에 있으면 실제로 쓸 수 있는 데이터다
+                score += 2.5 * weight
+                hit = True
             if kw in desc:
                 score += 1.5 * weight
                 hit = True
@@ -388,6 +395,8 @@ def search_candidates(keywords, fields=None, limit: int = 40) -> list:
         if row["field"] in fields:
             score += 5
         score += min(4.0, (row["downloads"] or 0) ** 0.35 / 6)
+        if row["column_count"]:
+            score += 2  # 데이터 항목을 아는 데이터가 실제 활용 판단에 유리하다
         if row["source"] == "AI Hub":
             score += 1.5  # AI 학습용 데이터는 목록이 적어 노출 기회를 보정
         scored.append((score, dict(row)))
@@ -452,8 +461,10 @@ KEYWORD_PROMPT = """사용자 요구:
 RECO_SYSTEM = (
     "너는 데이터 기반 서비스 기획자다. 사용자의 목적과 '후보 데이터 목록'을 보고, "
     "목적 달성에 필요한 기능을 정의하고 후보 중에서 실제로 쓸 데이터를 골라 활용 방법을 제시한다. "
+    "각 후보에는 실제 '데이터항목'(컬럼 이름)이 함께 주어진다. 데이터명이 그럴듯해도 "
+    "데이터항목에 목적에 필요한 값이 없으면 고르지 말고, 항목이 목적과 맞는 데이터를 우선한다. "
     "반드시 후보 목록에 있는 uid만 사용하고, 목록에 없는 데이터를 지어내지 않는다. "
-    "후보 중 목적과 무관한 것은 제외한다. 모든 설명은 한국어로 쓰고 JSON만 출력한다."
+    "모든 설명은 한국어로 쓰고 JSON만 출력한다."
 )
 RECO_PROMPT = """[사용자 목적]
 \"\"\"{query}\"\"\"
@@ -470,9 +481,10 @@ RECO_PROMPT = """[사용자 목적]
   ],
   "datasets": [
     {{"uid": "후보 목록의 uid", "role": "핵심|보조|참고",
-      "why": "이 목적에 왜 필요한지 한두 문장",
-      "usage": "구체적인 활용 방법",
-      "items": ["활용할 주요 항목/컬럼 추정 3~6개"]}}
+      "why": "이 목적에 왜 필요한지 한두 문장. 어떤 데이터항목 때문에 쓸 만한지 근거를 넣는다",
+      "usage": "구체적인 활용 방법. 어떤 항목을 어떻게 가공/결합하는지 적는다",
+      "items": ["실제로 쓸 데이터항목 3~6개. 후보의 '데이터항목'에 있는 이름을 그대로 적는다"],
+      "join_key": "다른 데이터와 연결할 때 쓸 공통 항목(없으면 빈 문자열)"}}
   ],
   "pipeline": [{{"step": "단계 이름", "detail": "그 단계에서 할 일"}}],
   "cautions": ["데이터 활용 시 유의사항 2~4개"],
@@ -481,8 +493,16 @@ RECO_PROMPT = """[사용자 목적]
 
 규칙:
 - datasets 는 중요도 순으로 최대 12개, '핵심'은 3~5개로 제한한다.
+- items 는 반드시 해당 후보의 '데이터항목'에 실제로 있는 이름만 쓴다.
+  항목 정보가 없는 후보(항목 정보 없음)는 items 를 비우고 why 에 "항목 미확인"이라고 적는다.
+- 데이터항목을 보고 목적에 쓸 값이 없다고 판단되면 그 후보는 아예 고르지 않는다.
+- features 의 data_need 도 가능하면 후보들의 실제 데이터항목 이름으로 적는다.
 - features 는 3~6개, pipeline 은 3~6단계로 만든다.
 - 후보에 마땅한 데이터가 없으면 datasets 를 비우고 missing 에 이유를 적는다."""
+
+
+def columns_of(row) -> list:
+    return decode_json(row.get("columns_json") if isinstance(row, dict) else row["columns_json"], []) or []
 
 
 def _candidate_block(rows, aihub_access) -> str:
@@ -491,14 +511,22 @@ def _candidate_block(rows, aihub_access) -> str:
         acc = access_of(row, aihub_access)
         formats = ", ".join(decode_json(row.get("formats_json"), []) or [])
         kws = ", ".join((decode_json(row.get("keywords_json"), []) or [])[:6])
-        desc = re.sub(r"\s+", " ", (row.get("description") or ""))[:220]
+        desc = re.sub(r"\s+", " ", (row.get("description") or ""))[:200]
+        cols = columns_of(row)
+        if cols:
+            shown = ", ".join(cols[:18])
+            col_text = "%s%s (총 %d개)" % (shown[:320], " …" if len(cols) > 18 else "", len(cols))
+        else:
+            col_text = "(항목 정보 없음)"
         lines.append(
             "- uid: {uid} | 출처: {source} | 데이터명: {title} | 분야: {field}{sub} | 제공기관: {org} | "
-            "형식: {formats} | 제공방식: {acc} | 행수: {rows} | 갱신: {mod} | 키워드: {kws} | 설명: {desc}".format(
+            "형식: {formats} | 제공방식: {acc} | 행수: {rows} | 갱신: {mod}\n"
+            "  데이터항목: {cols}\n"
+            "  키워드: {kws} | 설명: {desc}".format(
                 uid=row["uid"], source=row["source"], title=row["title"], field=row.get("field") or "-",
                 sub=(" > " + row["subfield"]) if row.get("subfield") else "", org=row.get("organization") or "-",
                 formats=formats or "-", acc=acc["type"], rows=row.get("row_count") or "-",
-                mod=row.get("modified_at") or "-", kws=kws or "-", desc=desc or "-")
+                mod=row.get("modified_at") or "-", cols=col_text, kws=kws or "-", desc=desc or "-")
         )
     return "\n".join(lines)
 
@@ -562,6 +590,9 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
             "role": str(item.get("role") or "참고")[:6],
             "why": str(item.get("why") or ""), "usage": str(item.get("usage") or ""),
             "items": [str(x) for x in (item.get("items") or [])][:8],
+            "join_key": str(item.get("join_key") or ""),
+            "columns": columns_of(row)[:40],
+            "column_count": row.get("column_count") or 0,
         })
 
     payload = {

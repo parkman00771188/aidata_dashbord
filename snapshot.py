@@ -179,6 +179,12 @@ def restore(force: bool = False) -> int:
         set_meta(con, key, value)
     set_meta(con, "restored_from_snapshot", manifest.get("exported_at", ""))
     con.commit()
+    # 스냅샷에는 미리보기 컬럼명이 남아 있으므로 데이터 항목 색인을 다시 만든다.
+    try:
+        from catalog_db import build_column_index
+        print("  데이터 항목 색인 %s건" % build_column_index(con, rebuild=True))
+    except Exception as e:  # noqa
+        print("  색인 생성 건너뜀: %r" % e)
     con.close()
     print("복원 완료: %s건" % n)
     return n
