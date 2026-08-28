@@ -896,6 +896,10 @@ RECO_PROMPT = """[사용자 목적]
 
 규칙:
 - datasets 는 최대 15개. 무관한 데이터를 넣어 개수를 채우지 않는다.
+  다만 목적에 실제로 쓸 수 있는 후보는 빠뜨리지 말고 60점으로라도 모두 넣는다.
+- 질문에 특정 지역이 없다면 전국·중앙기관(경찰청, 도로교통공단, 환경공단 등) 단위 데이터를
+  같은 내용의 시·군·구 단위 데이터보다 먼저 넣는다. 시·군·구 데이터만 추천하면
+  전국 분석을 할 수 없으므로, 전국 단위 후보가 있으면 반드시 포함한다.
 - 90점·60점을 준 데이터는 pipeline 의 uses 에도 등장시키는 것을 원칙으로 한다.
 - 30점(참고)은 정말 방법론이나 결과 검증에 도움이 되는 것만 최대 2개까지 넣는다.
   마땅한 것이 없으면 넣지 않는다. 억지로 채우지 않는다.
@@ -1108,7 +1112,7 @@ def _safezone_plan(result: dict, by_uid: dict, datasets: list):
 
 RECO_CACHE_PATH = os.path.join(DATA_DIR, "reco_cache.json")
 # 프롬프트/채점 기준이 바뀌면 올린다. 옛 캐시는 자동으로 무시된다.
-RECO_CACHE_VERSION = "fit-tier3-1"
+RECO_CACHE_VERSION = "fit-tier3-2"
 
 
 def _reco_cache_key(query: str, model: str) -> str:

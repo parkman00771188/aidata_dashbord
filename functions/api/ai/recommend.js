@@ -108,7 +108,7 @@ export async function onRequestPost({ request, env }) {
   /* 같은 질문이면 같은 답이 나오도록 결과를 캐시한다.
    * Gemini 는 temperature 0 에서도 사고 과정이 매번 달라 역할(핵심/보조)이 뒤바뀌곤 했다.
    * 접두어의 버전을 올리면 옛 캐시는 자동으로 무시된다. */
-  const recoKey = 'reco:fit-tier3-1:' + model + ':' + query.replace(/\s+/g, ' ').toLowerCase().slice(0, 300);
+  const recoKey = 'reco:fit-tier3-2:' + model + ':' + query.replace(/\s+/g, ' ').toLowerCase().slice(0, 300);
   if (env.SETTINGS && !body.refresh) {
     const hit = await env.SETTINGS.get(recoKey);
     if (hit) { try { return json({ ...JSON.parse(hit), cached: true }); } catch (e) {} }
@@ -170,7 +170,8 @@ ${hasSafezone ? '\n' + SAFEZONE_GUIDE + '\n' : ''}
 쓰임새가 같은 데이터에는 반드시 같은 점수를 준다.
 
 규칙:
-- datasets 는 최대 15개. 무관한 데이터를 넣어 개수를 채우지 않는다.
+- datasets 는 최대 15개. 무관한 데이터를 넣어 개수를 채우지 않는다. 다만 목적에 실제로 쓸 수 있는 후보는 빠뜨리지 말고 60점으로라도 모두 넣는다.
+- 질문에 특정 지역이 없다면 전국·중앙기관(경찰청, 도로교통공단, 환경공단 등) 단위 데이터를 같은 내용의 시·군·구 단위 데이터보다 먼저 넣는다. 시·군·구 데이터만 추천하면 전국 분석을 할 수 없으므로, 전국 단위 후보가 있으면 반드시 포함한다.
 - 90점·60점을 준 데이터는 pipeline 의 uses 에도 등장시키는 것을 원칙으로 한다.
 - 30점(참고)은 정말 방법론이나 결과 검증에 도움이 되는 것만 최대 2개까지 넣는다. 마땅한 것이 없으면 넣지 않는다. 억지로 채우지 않는다.
 - 같은 성격의 데이터가 여러 건이면(예: 격자 크기만 다른 유동인구 데이터) 가장 알맞은 1~2개를 고른다.
