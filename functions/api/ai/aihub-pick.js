@@ -1,4 +1,4 @@
-import { json, bad, activeKey, geminiJSON, DEFAULT_MODEL } from '../../_lib.js';
+import { json, bad, activeKey, geminiJSON, DEFAULT_MODEL, cacheKey, cacheGet, cachePut } from '../../_lib.js';
 
 /* AI Hub 975건 제목을 통째로 보여 주고 목적에 맞는 것을 의미로 고른다.
  * AI Hub 데이터명은 '텍스트 윤리검증 데이터'처럼 개념적으로 지어져 문자열 검색으로는
@@ -21,11 +21,9 @@ export async function onRequestPost({ request, env }) {
   const { key, settings } = await activeKey(env);
   if (!key) return json({ picks: [] });
 
-  const cacheKey = 'ap1:' + query.replace(/\s+/g, ' ').toLowerCase().slice(0, 300);
-  if (env.SETTINGS) {
-    const hit = await env.SETTINGS.get(cacheKey);
-    if (hit) { try { return json({ ...JSON.parse(hit), cached: true }); } catch (e) {} }
-  }
+  const ckey = await cacheKey('ap2:', query);
+  const hit = await cacheGet(env, ckey);
+  if (hit) return json({ ...hit, cached: true });
 
   const catalog = titles.map(t => `${t[0]} | ${String(t[1] || '').slice(0, 60)} | ${t[2] || ''} | ${(t[3] || []).join(',')}`).join('\n');
   const prompt = `[사용자 목적]
@@ -48,7 +46,7 @@ ${catalog}
       if (sn && valid.has(sn) && !picks.includes(sn)) { picks.push(sn); reasons[sn] = String(p.why || '').trim().slice(0, 120); }
     });
     const out = { picks, reasons, usage };
-    if (env.SETTINGS) await env.SETTINGS.put(cacheKey, JSON.stringify(out), { expirationTtl: 60 * 60 * 24 * 30 });
+    await cachePut(env, ckey, out);
     return json(out);
   } catch (e) {
     return json({ picks: [], error: String(e.message || e) });

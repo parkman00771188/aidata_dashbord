@@ -1,4 +1,4 @@
-import { json, bad, activeKey, geminiJSON, estimateCost, DEFAULT_MODEL } from '../../_lib.js';
+import { json, bad, activeKey, geminiJSON, estimateCost, DEFAULT_MODEL, cacheKey, cacheGet, cachePut } from '../../_lib.js';
 
 const SAFEZONE_GUIDE = `[안심존 데이터 이용 규칙 - 추천에 반드시 반영]
 - 안심존은 데이터를 받아오는 곳이 아니라, 데이터가 있는 서버에 내 개발환경을 가져가
@@ -108,10 +108,10 @@ export async function onRequestPost({ request, env }) {
   /* 같은 질문이면 같은 답이 나오도록 결과를 캐시한다.
    * Gemini 는 temperature 0 에서도 사고 과정이 매번 달라 역할(핵심/보조)이 뒤바뀌곤 했다.
    * 접두어의 버전을 올리면 옛 캐시는 자동으로 무시된다. */
-  const recoKey = 'reco:wide-1:' + model + ':' + query.replace(/\s+/g, ' ').toLowerCase().slice(0, 300);
-  if (env.SETTINGS && !body.refresh) {
-    const hit = await env.SETTINGS.get(recoKey);
-    if (hit) { try { return json({ ...JSON.parse(hit), cached: true }); } catch (e) {} }
+  const recoKey = await cacheKey('reco2:', 'wide-1', model, query);
+  if (!body.refresh) {
+    const hit = await cacheGet(env, recoKey);
+    if (hit) return json({ ...hit, cached: true });
   }
   const hasSafezone = candidates.some(c => c.access && c.access.type === '안심존');
   const plan = body.plan || {};
@@ -269,10 +269,6 @@ ${hasSafezone ? '\n' + SAFEZONE_GUIDE + '\n' : ''}
   };
 
   // 같은 질문이면 같은 답이 나오도록 저장해 둔다(30일).
-  if (env.SETTINGS) {
-    try {
-      await env.SETTINGS.put(recoKey, JSON.stringify(payload), { expirationTtl: 60 * 60 * 24 * 30 });
-    } catch (e) { /* 캐시 저장 실패는 추천 자체를 막지 않는다 */ }
-  }
+  await cachePut(env, recoKey, payload);
   return json(payload);
 }

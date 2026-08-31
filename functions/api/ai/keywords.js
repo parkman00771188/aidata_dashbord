@@ -1,4 +1,4 @@
-import { json, bad, activeKey, geminiJSON, DEFAULT_MODEL } from '../../_lib.js';
+import { json, bad, activeKey, geminiJSON, DEFAULT_MODEL, cacheKey, cacheGet, cachePut } from '../../_lib.js';
 
 const SYSTEM = '너는 한국 공공데이터·AI 학습데이터 검색 전문가다. 사용자의 데이터 요구를 읽고 '
   + '국내 데이터 카탈로그(공공데이터포털, AI Hub)에서 검색할 한국어 키워드를 뽑는다. '
@@ -49,13 +49,9 @@ export async function onRequestPost({ request, env }) {
   }
   // 같은 질문이면 같은 검색 계획을 쓰도록 KV 에 캐시한다(결과가 흔들리지 않게).
   // 형식이 바뀌면 접두어를 올려 옛 캐시를 무시한다.
-  const cacheKey = 'kw2:' + query.replace(/\s+/g, ' ').toLowerCase().slice(0, 300);
-  if (env.SETTINGS) {
-    const hit = await env.SETTINGS.get(cacheKey);
-    if (hit) {
-      try { const c = JSON.parse(hit); if (c.core || c.related) return json({ ...c, cached: true }); } catch (e) {}
-    }
-  }
+  const ckey = await cacheKey('kw3:', query);
+  const hit = await cacheGet(env, ckey);
+  if (hit && (hit.core || hit.related)) return json({ ...hit, cached: true });
   try {
     const { data, usage } = await geminiJSON(key, settings.model || DEFAULT_MODEL, SYSTEM, PROMPT(query), 0.0);
     const plan = {
@@ -69,9 +65,7 @@ export async function onRequestPost({ request, env }) {
     };
     plan.keywords = plan.core.concat(plan.related);
     if (!plan.keywords.length) return bad('질문에서 검색어를 뽑지 못했습니다. 조금 더 구체적으로 적어 주세요.');
-    if (env.SETTINGS) {
-      await env.SETTINGS.put(cacheKey, JSON.stringify(plan), { expirationTtl: 60 * 60 * 24 * 30 });
-    }
+    await cachePut(env, ckey, plan);
     return json(plan);
   } catch (e) {
     return bad(String(e.message || e), 502);

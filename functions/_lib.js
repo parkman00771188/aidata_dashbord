@@ -18,6 +18,36 @@ export function bad(message, status = 400) {
   return json({ error: message }, status);
 }
 
+/* KV 캐시 키를 만든다.
+ * 질문을 그대로 키에 넣으면 한글은 글자당 3바이트라 300자만 넣어도 900바이트가 되어
+ * Cloudflare KV 의 키 길이 상한(512바이트)을 넘고, get/put 이 예외를 던져 500 이 난다.
+ * 그래서 정규화한 질문을 SHA-256 으로 줄여 고정 길이 키를 쓴다. */
+export async function cacheKey(prefix, ...parts) {
+  const text = parts.map(v => String(v == null ? '' : v)).join('\u0000')
+    .replace(/\s+/g, ' ').trim().toLowerCase();
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  const hex = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return prefix + hex;
+}
+
+/* KV 는 없을 수도, 일시적으로 실패할 수도 있다. 캐시 때문에 요청 자체가 죽으면 안 된다. */
+export async function cacheGet(env, key) {
+  if (!env.SETTINGS) return null;
+  try {
+    const raw = await env.SETTINGS.get(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export async function cachePut(env, key, value, ttlSeconds = 60 * 60 * 24 * 30) {
+  if (!env.SETTINGS) return;
+  try {
+    await env.SETTINGS.put(key, JSON.stringify(value), { expirationTtl: ttlSeconds });
+  } catch (e) { /* 캐시 저장 실패는 무시한다 */ }
+}
+
 /** KV 가 연결돼 있지 않아도 빌드/미리보기가 죽지 않도록 감싼다. */
 export async function readSettings(env) {
   const fallback = { enabled: false, model: DEFAULT_MODEL, key: '' };
