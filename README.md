@@ -6,16 +6,35 @@ AI Hub 데이터셋(975건)과 공공데이터포털 파일데이터(약 84,000�
 > 공개 사이트(Cloudflare Pages)로 올리는 방법은 [docs/Cloudflare-Pages-배포.md](docs/Cloudflare-Pages-배포.md) 를 보세요.
 > 파이썬 서버 없이 정적 샤드 + Pages Functions 로 같은 화면이 동작하고, AI 추천은 관리자가 켜고 끕니다.
 
+## 실행 — `실행.bat` 하나면 됩니다
+
+더블클릭하면 메뉴가 뜹니다. 번호만 고르면 나머지는 알아서 진행됩니다.
+
 ```text
-대시보드 실행.bat          # http://localhost:8765 통합 화면
-데이터 갱신.bat            # AI Hub + 공공데이터 목록/상세 메타데이터 갱신
-공공데이터 전체 수집.bat   # 남은 데이터 미리보기까지 전체 수집/재개
-스냅샷 내보내기.bat        # 깃에 올릴 수 있는 크기로 카탈로그 내보내기
-수집완료시 깃 업로드.bat   # 수집이 끝나면 스냅샷 만들어 GitHub에 자동 커밋·푸시
+[1] 배포하기      스냅샷 → 정적 빌드 → GitHub → Cloudflare Pages   (약 5분)
+[2] 전체 실행     위 과정에 데이터 수집까지 전부                    (몇 시간)
+[3] 데이터 수집만 AI Hub + 공공데이터포털 새로 받기
+[4] 로컬 대시보드 http://localhost:8765
+[5] 현황 보기     수집이 어디까지 됐는지
+[6] Pages 배포만  이미 빌드된 site/ 를 그대로 올리기
+[7] GitHub 업로드만
 ```
 
-> 처음 clone 했다면 `대시보드 실행.bat` 만 실행하면 됩니다.
+명령줄에서 바로 부를 수도 있습니다(자동화·예약 실행용).
+
+```bash
+python run.py publish     # 스냅샷 → 빌드 → GitHub → Pages
+python run.py all         # 수집까지 전부
+python run.py crawl       # 수집만
+python run.py serve       # 로컬 대시보드
+python run.py status      # 현황
+```
+
+> 처음 clone 했다면 `실행.bat` → `[4] 로컬 대시보드` 만 고르면 됩니다.
 > `data/catalog.db` 가 없으면 깃에 포함된 스냅샷에서 **자동으로 복원**한 뒤 서버가 뜹니다.
+>
+> `실행.bat` 안에는 영문만 들어 있습니다. cmd.exe 가 한글이 든 배치 파일을 잘못 읽고
+> 중간에 멈추는 문제가 있어, 한글 안내는 전부 `run.py` 가 출력합니다.
 
 ---
 
@@ -131,7 +150,7 @@ python snapshot.py info      # 현재 상태 확인
   모두 들어갑니다. 즉 `catalog.db` 를 그대로 되살릴 수 있습니다. 제외되는 것은 재수집 가능한
   원본 HTML 캐시(`raw/`)뿐입니다.
 - 복원 시 데이터 항목 색인과 검색 색인(FTS)이 자동으로 다시 만들어집니다(복원 약 90초).
-- 데이터를 갱신한 뒤에는 `스냅샷 내보내기.bat` 을 한 번 실행하고 커밋하세요.
+- 데이터를 갱신한 뒤에는 `실행.bat` → `[1] 배포하기` 를 고르면 스냅샷·빌드·커밋·배포가 한 번에 끝납니다.
 
 ### 수집이 끝나면 자동으로 깃에 올리기
 ```bash
@@ -168,6 +187,7 @@ python publish_when_done.py --no-push    # 커밋까지만
 | `index.html` | 기존 AI Hub 전용 대시보드(보존) |
 | `docs/안심존 사용 방법.md` | 안심존 이용·반출 절차 정리. AI 추천의 안심존 계획 근거 |
 | `docs/Cloudflare-Pages-배포.md` | 공개 사이트 배포 방법(GitHub 연동·KV·관리자 로그인) |
+| `실행.bat`, `run.py` | 수집·스냅샷·빌드·GitHub·Pages 배포를 한 번에 처리하는 실행기 |
 | `build_static.py`, `build.sh` | 스냅샷 → 정적 JSON 샤드(`site/`) 빌드 |
 | `web/static-api.js` | 정적 모드에서 `/api/*` 를 대신하는 브라우저 데이터 계층 |
 | `functions/` | Pages Functions - Gemini 프록시, 관리자 로그인, 설정 저장(KV) |

@@ -1,9 +1,9 @@
-# Cloudflare Pages 배포 (find-publicdata.pages.dev)
+# Cloudflare Pages 배포 (publicdata-finder.pages.dev)
 
 GitHub 저장소를 연결하면 푸시할 때마다 자동으로 다시 빌드·배포됩니다.
 파이썬 서버 없이 **정적 JSON 샤드 + Pages Functions** 로 동작합니다.
 
-| | 로컬 (`대시보드 실행.bat`) | Cloudflare Pages |
+| | 로컬 (`실행.bat` → `[4]`) | Cloudflare Pages |
 |---|---|---|
 | 목록·검색·상세 | `serve.py` + SQLite(FTS5) | 정적 JSON 샤드 + 브라우저 검색 |
 | 내 데이터 / 저장된 추천 | `data/*.json` 파일 | 브라우저 localStorage (방문자별) |
@@ -12,22 +12,39 @@ GitHub 저장소를 연결하면 푸시할 때마다 자동으로 다시 빌드�
 
 ---
 
-## 1. 배포하기 — 방법 A: 직접 올리기 (가장 간단)
+## 1. 배포하기 — `실행.bat` (권장)
 
-Git 연동 없이 만들어진 `site/` 를 그대로 업로드합니다. **빌드 설정을 만질 필요가 없습니다.**
+**`실행.bat` 을 더블클릭하고 `[1] 배포하기` 를 고르면 끝입니다.** 약 5분 걸립니다.
 
-```bash
-npx wrangler login                                             # 브라우저에서 한 번만 승인
-python build_static.py                                         # site/ 생성 (약 1분)
-npx wrangler pages project create find-publicdata --production-branch main
-npx wrangler pages deploy site --project-name find-publicdata
+```text
+스냅샷 만들기 → 정적 사이트 빌드 → GitHub 커밋·푸시 → Cloudflare Pages 배포
 ```
 
-→ `https://find-publicdata.pages.dev` 완성.
-데이터를 갱신했을 때는 `python build_static.py && npx wrangler pages deploy site --project-name find-publicdata` 만 다시 실행하면 됩니다.
+처음 한 번만 Cloudflare 로그인이 필요합니다.
+
+```bash
+npx wrangler login          # 브라우저에서 승인 (한 번만)
+```
+
+로그인이 안 돼 있으면 배포 단계에서 그 사실을 알려 주고 멈추므로, 안내대로 로그인한 뒤
+다시 `[1]` 을 고르면 됩니다.
+
+### 손으로 하고 싶을 때
+
+```bash
+python snapshot.py export                                      # data/snapshot/*.jsonl.gz
+python build_static.py                                         # site/ 생성 (약 1분)
+npx wrangler pages deploy site --project-name publicdata-finder --branch main
+```
+
+프로젝트를 처음 만드는 경우에만 한 번 더:
+
+```bash
+npx wrangler pages project create publicdata-finder --production-branch main
+```
 
 ### KV 연결 (AI 추천을 쓰려면 필요)
-대시보드 → **Workers & Pages → find-publicdata → Settings → Bindings → Add → KV namespace**
+대시보드 → **Workers & Pages → publicdata-finder → Settings → Bindings → Add → KV namespace**
 
 | 변수 이름 | 값 |
 |---|---|
@@ -47,7 +64,7 @@ npx wrangler pages deploy site --project-name find-publicdata
 
 | 항목 | 값 |
 |---|---|
-| 프로젝트 이름 | `find-publicdata` |
+| 프로젝트 이름 | `publicdata-finder` |
 | 프로덕션 브랜치 | `main` |
 | **빌드 명령** | `sh build.sh` ← **비워 두면 배포가 실패합니다** |
 | **빌드 출력 디렉터리** | `site` |
@@ -106,10 +123,10 @@ site/data/det-NNNN.json.gz 상세 850개 (상세정보 + 미리보기 전체)
 
 ### 데이터 갱신 흐름
 ```
-로컬에서 수집 → python snapshot.py export → git push
-                                              ↓
-                                Cloudflare Pages 자동 재빌드·배포
+실행.bat → [1] 배포하기
+   스냅샷 → 빌드 → GitHub 푸시 → Pages 배포   (한 번에 처리)
 ```
+수집부터 다시 하려면 `[2] 전체 실행` 을 고릅니다.
 
 ---
 

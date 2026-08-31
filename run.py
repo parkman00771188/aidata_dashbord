@@ -205,7 +205,8 @@ def step_deploy() -> None:
 
 def step_serve() -> None:
     head("로컬 대시보드")
-    info("이 창을 닫으면 서버가 멈춥니다. 브라우저가 자동으로 열립니다.")
+    info("브라우저가 자동으로 열립니다. 안 열리면 http://localhost:8765 로 접속하세요.")
+    info("이 창을 닫거나 Ctrl+C 를 누르면 서버가 멈춥니다.")
     run_live(py("serve.py"), "대시보드 서버")
 
 
@@ -245,11 +246,13 @@ def run_menu() -> int:
     while True:
         show_menu()
         try:
-            picked = input("  번호를 입력하고 Enter: ").strip()
+            raw = input("  번호를 입력하고 Enter: ")
         except (EOFError, KeyboardInterrupt):
             _out("")
             return 0
-        if picked in ("0", "q", "Q"):
+        # 콘솔에 따라 눈에 안 보이는 문자가 섞여 들어오므로 숫자만 골라낸다.
+        picked = "".join(ch for ch in raw if ch.isdigit())[:1]
+        if picked == "0" or raw.strip().lower() in ("q", "quit", "exit"):
             return 0
         task = choices.get(picked)
         if not task:
