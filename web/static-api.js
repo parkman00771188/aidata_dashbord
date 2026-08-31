@@ -240,7 +240,7 @@
    *  plan: { core, related, region, modality, wants_ai_training } (키워드 단계 결과) */
   async function searchCandidates(plan, limit) {
     await loadIndex();
-    limit = limit || 60;
+    limit = limit || 120;
     plan = plan || {};
     const core = (plan.core || []).map(k => String(k).trim()).filter(Boolean);
     let related = (plan.related || []).map(k => String(k).trim()).filter(Boolean);
@@ -341,16 +341,19 @@
     }
 
     // 다양성: 같은 데이터의 지역별 복제본은 묶음당 3건까지(질문 지역과 맞는 건 예외)
-    const groupCount = new Map();
+    const groupCount = new Map(), coarseCount = new Map();
     const quotaAi = Math.max(8, Math.floor(limit / 3)) * (wantsAi ? 2 : 1);
     const picked = []; let aiN = 0;
     for (const [score, it, covered] of scored) {
       if (picked.length >= limit) break;
       const key = titleGroupKey(it.t);
+      const coarse = key.slice(0, 12);   // 앞부분만 같은 데이터(학교명만 바뀌는 설문 등)도 묶는다
       const isWanted = wantedRegion.length && wantedRegion.some(w => it.t.includes(w));
       if (!isWanted && (groupCount.get(key) || 0) >= 3) continue;
+      if (!isWanted && (coarseCount.get(coarse) || 0) >= 5) continue;
       if (it.s) { if (aiN >= quotaAi && picked.length > limit * 0.6) continue; aiN++; }
       groupCount.set(key, (groupCount.get(key) || 0) + 1);
+      coarseCount.set(coarse, (coarseCount.get(coarse) || 0) + 1);
       picked.push({ ...toRow(it), _score: Math.round(score * 10) / 10, _covered: covered, columns_text: it.mt });
     }
     return {
@@ -408,7 +411,7 @@
           plan.pick_usage = picked.cached ? null : (picked.usage || null);
         } catch (e) { plan.aihub_picks = []; plan.aihub_pick_reasons = {}; }
       }
-      const found = await searchCandidates(plan, 60);
+      const found = await searchCandidates(plan, 120);
       if (!found.candidates.length) throw new Error('카탈로그에서 관련 데이터를 찾지 못했습니다. 다른 표현으로 검색해 보세요.');
       emit({ phase: 'ai' });
       const result = await callFunction('/api/ai/recommend', {

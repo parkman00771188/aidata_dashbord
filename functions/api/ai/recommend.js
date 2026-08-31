@@ -94,7 +94,7 @@ export async function onRequestPost({ request, env }) {
   let body = {};
   try { body = await request.json(); } catch (e) {}
   const query = String(body.query || '').trim();
-  const candidates = Array.isArray(body.candidates) ? body.candidates.slice(0, 70) : [];
+  const candidates = Array.isArray(body.candidates) ? body.candidates.slice(0, 130) : [];
   if (query.length < 3) return bad('찾고 싶은 데이터를 조금 더 자세히 적어 주세요.');
   if (!candidates.length) return bad('후보 데이터가 없습니다.');
 
@@ -108,7 +108,7 @@ export async function onRequestPost({ request, env }) {
   /* 같은 질문이면 같은 답이 나오도록 결과를 캐시한다.
    * Gemini 는 temperature 0 에서도 사고 과정이 매번 달라 역할(핵심/보조)이 뒤바뀌곤 했다.
    * 접두어의 버전을 올리면 옛 캐시는 자동으로 무시된다. */
-  const recoKey = 'reco:fit-tier3-2:' + model + ':' + query.replace(/\s+/g, ' ').toLowerCase().slice(0, 300);
+  const recoKey = 'reco:wide-1:' + model + ':' + query.replace(/\s+/g, ' ').toLowerCase().slice(0, 300);
   if (env.SETTINGS && !body.refresh) {
     const hit = await env.SETTINGS.get(recoKey);
     if (hit) { try { return json({ ...JSON.parse(hit), cached: true }); } catch (e) {} }
@@ -170,11 +170,11 @@ ${hasSafezone ? '\n' + SAFEZONE_GUIDE + '\n' : ''}
 쓰임새가 같은 데이터에는 반드시 같은 점수를 준다.
 
 규칙:
-- datasets 는 최대 15개. 무관한 데이터를 넣어 개수를 채우지 않는다. 다만 목적에 실제로 쓸 수 있는 후보는 빠뜨리지 말고 60점으로라도 모두 넣는다.
+- datasets 에는 목적에 쓸 수 있는 후보를 빠짐없이 담는다. 최대 25개. 사용자는 "필요한 데이터가 다 나오는 것"을 원한다. 아껴서 3~4개만 고르지 말고, 조금이라도 쓸모가 있으면 60점이나 30점으로라도 반드시 넣는다. 목적과 아무 상관 없는 데이터만 빼면 된다.
 - 질문에 특정 지역이 없다면 전국·중앙기관(경찰청, 도로교통공단, 환경공단 등) 단위 데이터를 같은 내용의 시·군·구 단위 데이터보다 먼저 넣는다. 시·군·구 데이터만 추천하면 전국 분석을 할 수 없으므로, 전국 단위 후보가 있으면 반드시 포함한다.
-- 90점·60점을 준 데이터는 pipeline 의 uses 에도 등장시키는 것을 원칙으로 한다.
-- 30점(참고)은 정말 방법론이나 결과 검증에 도움이 되는 것만 최대 2개까지 넣는다. 마땅한 것이 없으면 넣지 않는다. 억지로 채우지 않는다.
-- 같은 성격의 데이터가 여러 건이면(예: 격자 크기만 다른 유동인구 데이터) 가장 알맞은 1~2개를 고른다.
+- 90점을 준 데이터는 pipeline 의 uses 에도 등장시킨다.
+- 30점(참고)은 개수를 제한하지 않는다. 다만 답이 길어지지 않도록 why 만 한 문장으로 쓰고 usage 와 join_key 는 빈 문자열, items 는 빈 배열로 둔다.
+- 같은 성격의 데이터가 여러 건이면(예: 격자 크기만 다른 유동인구, 지역만 다른 같은 통계) 대표적인 것 3개까지만 넣고 나머지는 생략한다.
 - items 는 반드시 해당 후보의 '데이터항목'에 실제로 있는 이름만 쓴다. 항목 정보가 없는 후보는 데이터명·설명·행수로 판단하고 items 는 비우고 why 에 "항목 미확인"이라고 적는다. 항목 정보가 없다는 이유만으로 제외하지 않는다.
 - 데이터항목이 있는데 목적에 쓸 값이 전혀 없다고 판단되면 그 후보는 고르지 않는다.
 - '★ AI Hub 전문가 검토' 표시가 붙은 후보는 데이터명이 목적과 달라 보여도 내용이 맞는 것으로 확인된 것이다. 특별한 이유가 없으면 60점 이상을 주고, 그 근거를 why 에 반영한다.
@@ -197,7 +197,7 @@ ${hasSafezone ? '\n' + SAFEZONE_GUIDE + '\n' : ''}
 
   const datasets = [];
   let dropped = 0;
-  (result.datasets || []).slice(0, 16).forEach(item => {
+  (result.datasets || []).slice(0, 26).forEach(item => {
     const row = byUid[String(item.uid || '').trim()];
     if (!row) { dropped++; return; }
     const fit = clampFit(item.fit, item.role);

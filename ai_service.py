@@ -448,6 +448,9 @@ def tokenize(text: str) -> list:
 SEARCH_FIELDS = (("i.title", 6.0), ("i.file_name", 3.0), ("i.keywords_json", 3.0),
                  ("c.columns_text", 2.5), ("i.description", 1.5))
 SCAN_CAP = 30000        # 점수 계산에 올릴 최대 행 수
+CANDIDATE_LIMIT = 120   # Gemini 에게 보여 줄 후보 수. 60 이면 61위와 점수가 같은 데이터까지
+                        # 잘려 나가 '필요한 게 다 안 나온다'는 느낌을 준다.
+MAX_DATASETS = 25       # 추천 목록에 담을 최대 건수
 GLOBAL_TOP = 220        # 종합 점수 상위
 PER_KEYWORD_TOP = 30    # 키워드마다 반드시 확보할 상위 건수
 
@@ -649,7 +652,7 @@ def truthy(v) -> bool:
     return str(v).strip().lower() in ("true", "1", "yes", "예", "y")
 
 
-def search_candidates(keywords, fields=None, limit: int = 60, query: str = "", plan=None) -> list:
+def search_candidates(keywords, fields=None, limit: int = CANDIDATE_LIMIT, query: str = "", plan=None) -> list:
     """질문에 맞는 후보를 폭넓게, 그러나 정확하게 찾는다.
 
     plan(키워드 단계 결과)의 core/related/region/modality/wants_ai_training 을 반영한다.
@@ -788,7 +791,7 @@ def search_candidates(keywords, fields=None, limit: int = 60, query: str = "", p
         fallback.sort(key=lambda x: -x[0])
         scored.extend(fallback[:max(0, 40 - len(scored))])
     # 다양성: 같은 데이터의 지역별 복제본은 묶음당 3건까지(질문 지역과 맞는 건 예외)
-    group_count = {}
+    group_count, coarse_count = {}, {}
     quota_ai = max(8, limit // 3)
     picked, ai_n = [], 0
     for score, row, covered in scored:
@@ -796,14 +799,18 @@ def search_candidates(keywords, fields=None, limit: int = 60, query: str = "", p
             break
         title = row["title"] or ""
         key = title_group_key(title)
+        coarse = key[:12]      # 앞부분만 같은 데이터(학교명만 바뀌는 설문 결과 등)도 묶는다
         is_wanted_region = bool(wanted_region) and any(w in title for w in wanted_region)
         if not is_wanted_region and group_count.get(key, 0) >= 3:
+            continue
+        if not is_wanted_region and coarse_count.get(coarse, 0) >= 5:
             continue
         if row["source"] == "AI Hub":
             if ai_n >= quota_ai * (2 if wants_ai else 1) and len(picked) > limit * 0.6:
                 continue
             ai_n += 1
         group_count[key] = group_count.get(key, 0) + 1
+        coarse_count[coarse] = coarse_count.get(coarse, 0) + 1
         row["_score"] = round(score, 2)
         row["_covered"] = covered
         picked.append(row)
@@ -954,15 +961,18 @@ RECO_PROMPT = """[사용자 목적]
 쓰임새가 같은 데이터에는 반드시 같은 점수를 준다.
 
 규칙:
-- datasets 는 최대 15개. 무관한 데이터를 넣어 개수를 채우지 않는다.
-  다만 목적에 실제로 쓸 수 있는 후보는 빠뜨리지 말고 60점으로라도 모두 넣는다.
+- datasets 에는 목적에 쓸 수 있는 후보를 빠짐없이 담는다. 최대 25개.
+  사용자는 "필요한 데이터가 다 나오는 것"을 원한다. 아껴서 3~4개만 고르지 말고,
+  조금이라도 쓸모가 있으면 60점이나 30점으로라도 반드시 넣는다.
+  목적과 아무 상관 없는 데이터만 빼면 된다.
 - 질문에 특정 지역이 없다면 전국·중앙기관(경찰청, 도로교통공단, 환경공단 등) 단위 데이터를
   같은 내용의 시·군·구 단위 데이터보다 먼저 넣는다. 시·군·구 데이터만 추천하면
   전국 분석을 할 수 없으므로, 전국 단위 후보가 있으면 반드시 포함한다.
-- 90점·60점을 준 데이터는 pipeline 의 uses 에도 등장시키는 것을 원칙으로 한다.
-- 30점(참고)은 정말 방법론이나 결과 검증에 도움이 되는 것만 최대 2개까지 넣는다.
-  마땅한 것이 없으면 넣지 않는다. 억지로 채우지 않는다.
-- 같은 성격의 데이터가 여러 건이면(예: 격자 크기만 다른 유동인구 데이터) 가장 알맞은 1~2개를 고른다.
+- 90점을 준 데이터는 pipeline 의 uses 에도 등장시킨다.
+- 30점(참고)은 개수를 제한하지 않는다. 다만 답이 길어지지 않도록 why 만 한 문장으로 쓰고
+  usage 와 join_key 는 빈 문자열, items 는 빈 배열로 둔다.
+- 같은 성격의 데이터가 여러 건이면(예: 격자 크기만 다른 유동인구, 지역만 다른 같은 통계)
+  대표적인 것 3개까지만 넣고 나머지는 생략한다.
 - items 는 반드시 해당 후보의 '데이터항목'에 실제로 있는 이름만 쓴다.
   항목 정보가 없는 후보(항목 정보 없음)는 데이터명·설명·행수로 판단하고, items 는 비우고
   why 에 "항목 미확인"이라고 적는다. 항목 정보가 없다는 이유만으로 제외하지 않는다.
@@ -1171,7 +1181,7 @@ def _safezone_plan(result: dict, by_uid: dict, datasets: list):
 
 RECO_CACHE_PATH = os.path.join(DATA_DIR, "reco_cache.json")
 # 프롬프트/채점 기준이 바뀌면 올린다. 옛 캐시는 자동으로 무시된다.
-RECO_CACHE_VERSION = "fit-tier3-2"
+RECO_CACHE_VERSION = "wide-1"
 
 
 def _reco_cache_key(query: str, model: str) -> str:
@@ -1267,9 +1277,9 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
         store_keywords(query, keywords, fields, plan.get("goal", ""), plan)
 
     # 2단계 - 로컬 카탈로그 검색 (질문 원문 토큰도 함께 넣어 놓치는 데이터를 줄인다)
-    candidates = search_candidates(keywords, fields, limit=60, query=query, plan=plan)
+    candidates = search_candidates(keywords, fields, limit=CANDIDATE_LIMIT, query=query, plan=plan)
     if not candidates:
-        candidates = search_candidates(tokenize(query), [], limit=60, query=query)
+        candidates = search_candidates(tokenize(query), [], limit=CANDIDATE_LIMIT, query=query)
     if not candidates:
         raise AiError("카탈로그에서 관련 데이터를 찾지 못했습니다. 다른 표현으로 다시 검색해 보세요. (검색어: %s)" % ", ".join(keywords))
 
@@ -1299,7 +1309,7 @@ def recommend(query: str, model: str = "", aihub_access: dict | None = None, fie
 
     by_uid = {row["uid"]: row for row in candidates}
     datasets, dropped = [], 0
-    for item in (result.get("datasets") or [])[:16]:
+    for item in (result.get("datasets") or [])[:MAX_DATASETS + 1]:
         row = by_uid.get(str(item.get("uid", "")).strip())
         if row is None:
             dropped += 1
